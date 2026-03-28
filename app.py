@@ -49,7 +49,7 @@ from frontend.components.methodology import render_methodology
 from frontend.components.cards import (
     render_value_cards,
     render_budget_banner,
-    render_nestwise_pick,
+    render_top_pick,
 )
 
 
@@ -191,6 +191,7 @@ def _render_landing_page():
             "Click Get Started and switch to Log in.</p>",
             unsafe_allow_html=True,
         )
+
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -364,7 +365,7 @@ def _render_discover():
         render_listing_tab(bundle["listings_df"])
 
     with insights_tab:
-        render_nestwise_pick(inputs, bundle)
+        render_top_pick(inputs, bundle)
         st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
         render_value_cards(bundle, inputs.budget)
         render_budget_banner(bundle, inputs.budget)

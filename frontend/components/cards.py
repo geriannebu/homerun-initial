@@ -40,7 +40,7 @@ def render_budget_banner(bundle: Dict[str,Any], budget: int):
     st.markdown(f'<div class="{css}">{msg}</div>', unsafe_allow_html=True)
 
 
-def render_nestwise_pick(inputs: UserInputs, bundle: Dict[str,Any]):
+def render_top_pick(inputs: UserInputs, bundle: Dict[str,Any]):
     if bundle["listings_df"].empty: return
     ranked = compute_listing_scores(bundle["listings_df"], inputs.budget, inputs.amenity_weights)
     top = ranked.sort_values("overall_value_score", ascending=False).iloc[0]
@@ -49,7 +49,7 @@ def render_nestwise_pick(inputs: UserInputs, bundle: Dict[str,Any]):
     <div class="nw-pick">
         <div class="nw-pick-icon">🏆</div>
         <div style="flex:1">
-            <div class="nw-pick-label">NestWise pick right now</div>
+            <div class="nw-pick-label">HomeRun pick right now</div>
             <div class="nw-pick-value">{top['listing_id']} &nbsp;·&nbsp; {top['town']}</div>
             <div class="nw-pick-sub">
                 Asking {fmt_sgd(top['asking_price'])} &nbsp;·&nbsp; {tag} &nbsp;·&nbsp;
