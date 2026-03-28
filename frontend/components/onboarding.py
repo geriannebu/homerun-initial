@@ -149,34 +149,120 @@ def render_onboarding() -> bool:
 # ── Step 0: Welcome ──────────────────────────────────────────────────────────
 
 def _render_welcome():
-    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-    st.markdown(
-        f"""
-        <div style="text-align:center;padding:1.5rem 0 2rem;">
-            <div style="position:relative;display:inline-block;margin-bottom:1.2rem;">
-                <div style="position:absolute;inset:-8px;border-radius:30px;
-                            background:conic-gradient(from 0deg,rgba(255,68,88,0.50),rgba(255,107,107,0.14),rgba(255,68,88,0.50));
-                            animation:nw-spin 8s linear infinite;"></div>
-                <div style="position:absolute;inset:-2px;border-radius:24px;background:#fafafa;"></div>
-                <div style="position:relative;z-index:1;border-radius:22px;overflow:hidden;
-                            background:#fff;
-                            box-shadow:0 0 0 1px rgba(255,68,88,0.10),0 10px 32px rgba(255,68,88,0.14);">
-                    {get_logo_img_tag(96)}
-                </div>
-            </div>
-            <style>@keyframes nw-spin{{to{{transform:rotate(360deg)}}}}</style>
-            <h1 style="font-family:'DM Sans',sans-serif;font-size:2.1rem;font-weight:800;
-                       letter-spacing:-0.045em;color:#0b132d;margin-bottom:0.6rem;line-height:1.05;">
-                Find your flat,<br>the smarter way
-            </h1>
-            <p style="font-size:0.95rem;color:#64748b;max-width:380px;
-                      margin:0 auto 2rem;line-height:1.7;font-weight:500;">
-                Answer a few quick questions and we'll build a personalised
-                discovery deck of HDB flats matched to your priorities.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    components.html(
+        """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;background:transparent;overflow:hidden;}
+
+/* floating animations */
+@keyframes f1{0%,100%{transform:translate(0,0) rotate(0deg)}25%{transform:translate(14px,-22px) rotate(10deg)}75%{transform:translate(-10px,14px) rotate(-7deg)}}
+@keyframes f2{0%,100%{transform:translate(0,0) rotate(0deg)}33%{transform:translate(-18px,16px) rotate(-12deg)}67%{transform:translate(13px,-11px) rotate(8deg)}}
+@keyframes f3{0%,100%{transform:translate(0,0) rotate(0deg)}50%{transform:translate(11px,20px) rotate(15deg)}}
+@keyframes f4{0%,100%{transform:translate(0,0) rotate(0deg)}40%{transform:translate(-13px,-18px) rotate(-9deg)}80%{transform:translate(9px,9px) rotate(5deg)}}
+@keyframes f5{0%,100%{transform:translate(0,0) rotate(0deg)}30%{transform:translate(17px,11px) rotate(13deg)}70%{transform:translate(-15px,-13px) rotate(-8deg)}}
+@keyframes f6{0%,100%{transform:translate(0,0) rotate(0deg)}50%{transform:translate(-9px,22px) rotate(-14deg)}}
+
+/* content reveals */
+@keyframes up{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pop{from{opacity:0;transform:scale(0.35) rotate(-8deg)}to{opacity:1;transform:scale(1) rotate(0deg)}}
+@keyframes shine{0%{background-position:200% center}100%{background-position:-200% center}}
+@keyframes pulse{0%,100%{opacity:0.5}50%{opacity:0.9}}
+
+.scene{
+  position:relative;width:100%;height:490px;overflow:hidden;
+  background:linear-gradient(155deg,#07071a 0%,#0f0823 55%,#07071a 100%);
+  border-radius:24px;
+}
+.glow{
+  position:absolute;top:28%;left:50%;transform:translate(-50%,-50%);
+  width:500px;height:300px;
+  background:radial-gradient(ellipse,rgba(255,68,88,0.20) 0%,transparent 65%);
+  animation:pulse 4s ease-in-out infinite;pointer-events:none;
+}
+.p{position:absolute;line-height:1;}
+
+/* center column */
+.centre{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;z-index:10;padding:1.5rem 2rem;text-align:center;
+}
+.hero-emoji{
+  font-size:4.2rem;line-height:1;margin-bottom:1rem;
+  filter:drop-shadow(0 0 24px rgba(255,68,88,0.60));
+  animation:pop 0.75s cubic-bezier(0.22,1,0.36,1) both;animation-delay:0.1s;
+}
+.eyebrow{
+  font-size:0.62rem;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;
+  color:rgba(255,140,110,0.85);margin-bottom:0.9rem;
+  animation:up 0.5s ease both;animation-delay:0.35s;
+}
+.line1{
+  font-size:clamp(1.9rem,5.5vw,2.8rem);font-weight:800;letter-spacing:-0.05em;
+  color:#fff;line-height:1.0;margin-bottom:0.1rem;
+  animation:up 0.6s ease both;animation-delay:0.5s;
+}
+.line2{
+  font-size:clamp(1.9rem,5.5vw,2.8rem);font-weight:800;letter-spacing:-0.05em;
+  line-height:1.0;margin-bottom:1.5rem;
+  background:linear-gradient(120deg,#FF6B6B 0%,#FF4458 30%,#FFB347 60%,#FF6B6B 100%);
+  background-size:220% auto;
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:up 0.6s ease both,shine 3.5s linear 1.3s infinite;animation-delay:0.6s;animation-fill-mode:both;
+}
+.sub{
+  font-size:0.88rem;color:rgba(255,255,255,0.48);max-width:310px;
+  line-height:1.75;font-weight:500;
+  animation:up 0.6s ease both;animation-delay:0.78s;
+}
+</style>
+</head>
+<body>
+<div class="scene">
+
+  <div class="glow"></div>
+
+  <!-- floating emojis -->
+  <span class="p" style="top:7%;left:7%;font-size:2.4rem;opacity:0.72;animation:f1 7s ease-in-out infinite;">🏠</span>
+  <span class="p" style="top:19%;left:16%;font-size:1.3rem;opacity:0.42;animation:f3 10s ease-in-out infinite;animation-delay:-2.5s;">🌳</span>
+  <span class="p" style="top:5%;left:30%;font-size:1rem;opacity:0.28;animation:f2 12s ease-in-out infinite;animation-delay:-5s;">✨</span>
+
+  <span class="p" style="top:6%;right:9%;font-size:2.2rem;opacity:0.65;animation:f2 8.5s ease-in-out infinite;animation-delay:-1s;">🏡</span>
+  <span class="p" style="top:21%;right:18%;font-size:1.25rem;opacity:0.45;animation:f4 10.5s ease-in-out infinite;animation-delay:-3.5s;">🔑</span>
+  <span class="p" style="top:9%;right:33%;font-size:0.95rem;opacity:0.26;animation:f1 13s ease-in-out infinite;animation-delay:-7s;">💫</span>
+
+  <span class="p" style="top:43%;left:5%;font-size:1.8rem;opacity:0.55;animation:f5 9s ease-in-out infinite;animation-delay:-2s;">👨‍👩‍👧</span>
+  <span class="p" style="top:63%;left:11%;font-size:1.1rem;opacity:0.38;animation:f3 13.5s ease-in-out infinite;animation-delay:-6s;">🪴</span>
+
+  <span class="p" style="top:41%;right:5%;font-size:1.9rem;opacity:0.50;animation:f4 8s ease-in-out infinite;animation-delay:-4s;">🛋️</span>
+  <span class="p" style="top:63%;right:13%;font-size:1.05rem;opacity:0.35;animation:f6 11.5s ease-in-out infinite;animation-delay:-8s;">💕</span>
+
+  <span class="p" style="bottom:14%;left:8%;font-size:1.5rem;opacity:0.48;animation:f2 9s ease-in-out infinite;animation-delay:-1.8s;">🏘️</span>
+  <span class="p" style="bottom:12%;right:10%;font-size:1.6rem;opacity:0.46;animation:f1 7.5s ease-in-out infinite;animation-delay:-4.5s;">🌿</span>
+  <span class="p" style="bottom:25%;left:25%;font-size:0.85rem;opacity:0.20;animation:f5 15s ease-in-out infinite;animation-delay:-9s;">✨</span>
+  <span class="p" style="bottom:22%;right:27%;font-size:0.85rem;opacity:0.20;animation:f3 12.5s ease-in-out infinite;animation-delay:-10s;">💫</span>
+  <span class="p" style="bottom:8%;left:42%;font-size:1rem;opacity:0.28;animation:f6 10s ease-in-out infinite;animation-delay:-3s;">🛏️</span>
+
+  <!-- centre content -->
+  <div class="centre">
+    <div class="hero-emoji">🔑</div>
+    <div class="eyebrow">HomeRun &middot; Singapore</div>
+    <div class="line1">Find your flat,</div>
+    <div class="line2">the smarter way</div>
+    <p class="sub">Answer a few quick questions and we'll build a personalised discovery deck of HDB flats matched to your priorities.</p>
+  </div>
+
+</div>
+</body>
+</html>""",
+        height=500,
+        scrolling=False,
     )
     col = st.columns([1, 2, 1])[1]
     with col:
