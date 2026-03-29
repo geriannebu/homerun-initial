@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import altair as alt
 
+from backend.schemas import inputs
 from backend.utils.scoring import compute_listing_scores
 from backend.utils.formatters import fmt_sgd
 from backend.services.predictor_service import get_prediction_bundle
@@ -142,41 +143,6 @@ def _compute_accessibility_score(df, amenity_weights):
     return pd.Series([70.0] * len(df), index=df.index)
 
 
-def _get_saved_df_for_user():
-    user = st.session_state.get("current_user")
-    if not user:
-        return pd.DataFrame()
-
-    saved_flats = st.session_state.get("saved_flats", {})
-    user_saved = saved_flats.get(user, [])
-
-    if not user_saved:
-        return pd.DataFrame()
-
-    return pd.DataFrame(user_saved)
-
-
-def _merge_saved_with_latest(saved_df, listings_df, inputs):
-    if saved_df.empty:
-        return saved_df
-
-    merged_df = saved_df.copy()
-
-    if listings_df is not None and not listings_df.empty:
-        scored_df = compute_listing_scores(
-            listings_df.copy(),
-            inputs.budget,
-            inputs.amenity_weights,
-        ).copy()
-
-        keep_cols = [c for c in scored_df.columns if c not in merged_df.columns or c == "listing_id"]
-        scored_df = scored_df[keep_cols]
-
-        merged_df = merged_df.merge(scored_df, on="listing_id", how="left")
-
-    return merged_df
-
-
 def _prepare_comparison_scores(df, inputs):
     df = df.copy()
 
@@ -262,18 +228,6 @@ def _format_listing_label(row):
     flat_type = row.get("flat_type", "Flat")
     return f"{str(flat_type).title()} at {str(town).title()}"
 
-
-def _next_hypothetical_id(user_saved):
-    existing_ids = [flat.get("listing_id", "") for flat in user_saved]
-    nums = []
-    for lid in existing_ids:
-        if isinstance(lid, str) and lid.startswith("HYP-"):
-            try:
-                nums.append(int(lid.split("-")[1]))
-            except Exception:
-                pass
-    next_num = max(nums, default=0) + 1
-    return f"HYP-{next_num:03d}"
 
 
 # =========================================================
@@ -436,33 +390,84 @@ def _lookup_towns_from_postal(postal_code):
     sector = postal_norm[:2]
     return SECTOR_TO_TOWNS.get(sector, [])
 
-def _save_hypothetical_flat(inputs, listings_df):
-    st.markdown("#### Or create a hypothetical flat")
-    st.caption("Add a hypothetical flat using your own inputs, then compare it with your saved flats.")
+def _next_hypothetical_id(custom_rows):
+    nums = []
+    for row in custom_rows:
+        lid = row.get("listing_id", "")
+        if isinstance(lid, str) and lid.startswith("HYP-"):
+            try:
+                nums.append(int(lid.split("-")[1]))
+            except Exception:
+                pass
+    return f"HYP-{max(nums, default=0) + 1:03d}"
 
-    user = st.session_state.get("current_user")
-    if not user:
-        st.info("Log in first to create and save hypothetical flats.")
-        return False
+def _stepper_number_input(
+    label: str,
+    key: str,
+    default,
+    min_value,
+    max_value,
+    step,
+    is_float: bool = False,
+):
+    if key not in st.session_state:
+        st.session_state[key] = default
 
-    saved_store = st.session_state.setdefault("saved_flats", {})
-    saved_store.setdefault(user, [])
+    def dec():
+        st.session_state[key] = max(min_value, st.session_state[key] - step)
 
-    room_options = ["2 ROOM", "3 ROOM", "4 ROOM", "5 ROOM", "EXECUTIVE"]
-    default_type = inputs.flat_type if getattr(inputs, "flat_type", None) in room_options else "4 ROOM"
+    def inc():
+        st.session_state[key] = min(max_value, st.session_state[key] + step)
 
-    floor_options = [
-        "Low floor (01 to 03)",
-        "Mid floor (04 to 06)",
-        "High floor (07 to 09)",
-        "Very high floor (10 and above)",
-    ]
+    btn_col_l, input_col, btn_col_r = st.columns([0.7, 3.2, 0.7])
 
-    with st.form("hypothetical_flat_form", clear_on_submit=False):
+    with btn_col_l:
+        st.markdown("<div style='height: 1.7rem;'></div>", unsafe_allow_html=True)
+        st.button("−", key=f"{key}_minus", on_click=dec, use_container_width=True)
+
+    with input_col:
+        val = st.number_input(
+            label,
+            min_value=min_value,
+            max_value=max_value,
+            step=step,
+            key=key,   # important: use the SAME session key
+        )
+
+    with btn_col_r:
+        st.markdown("<div style='height: 1.7rem;'></div>", unsafe_allow_html=True)
+        st.button("+", key=f"{key}_plus", on_click=inc, use_container_width=True)
+
+    return float(val) if is_float else int(val)
+
+def _render_add_hypothetical_flat(inputs):
+    with st.expander("Add a hypothetical flat", expanded=False):
+        st.caption(
+            "We’ve pre-filled this with your original search preferences. "
+            "You can adjust any field before adding it to the comparison."
+        )
+
+        st.session_state.setdefault("custom_compare_rows", [])
+
+        room_options = ["2 ROOM", "3 ROOM", "4 ROOM", "5 ROOM", "EXECUTIVE"]
+        default_type = inputs.flat_type if getattr(inputs, "flat_type", None) in room_options else "4 ROOM"
+
+        floor_options = [
+            "Low floor (01 to 03)",
+            "Mid floor (04 to 06)",
+            "High floor (07 to 09)",
+            "Very high floor (10 and above)",
+        ]
+
+        
         col1, col2 = st.columns(2)
 
         with col1:
-            hyp_postal = st.text_input("Postal code (optional)", placeholder="e.g. 560123")
+            hyp_postal = st.text_input(
+                "Postal code (optional)",
+                value="",
+                placeholder="e.g. 560123",
+            )
 
             detected_towns = _lookup_towns_from_postal(hyp_postal)
 
@@ -472,21 +477,37 @@ def _save_hypothetical_flat(inputs, listings_df):
 
             elif len(detected_towns) > 1:
                 st.caption("Postal sector matches multiple possible towns. Please choose one.")
+                default_ix = 0
+                if getattr(inputs, "town", None) in detected_towns:
+                    default_ix = detected_towns.index(inputs.town)
                 hyp_town = st.selectbox(
                     "Town",
                     options=detected_towns,
-                    index=0,
-                    key="hyp_town_selectbox"
+                    index=default_ix,
+                    key="comparison_hyp_town_selectbox",
                 )
 
             else:
-                hyp_town = st.text_input(
+                town_options = sorted([
+                    "ANG MO KIO", "BEDOK", "BISHAN", "BUKIT BATOK", "BUKIT MERAH",
+                    "BUKIT PANJANG", "BUKIT TIMAH", "CENTRAL AREA", "CHOA CHU KANG",
+                    "CLEMENTI", "GEYLANG", "HOUGANG", "JURONG EAST", "JURONG WEST",
+                    "KALLANG/WHAMPOA", "MARINE PARADE", "PASIR RIS", "PUNGGOL",
+                    "QUEENSTOWN", "SEMBAWANG", "SENGKANG", "SERANGOON", "TAMPINES",
+                    "TOA PAYOH", "WOODLANDS", "YISHUN"
+                ])
+
+                default_town = str(inputs.town).upper() if getattr(inputs, "town", None) and str(inputs.town) != "Recommendation mode" else town_options[0]
+                default_ix = town_options.index(default_town) if default_town in town_options else 0
+
+                hyp_town = st.selectbox(
                     "Town",
-                    value=str(inputs.town) if getattr(inputs, "town", None) and str(inputs.town) != "Recommendation mode" else "",
-                    placeholder="e.g. Bishan",
+                    options=town_options,
+                    index=default_ix,
+                    key="comparison_hyp_town_dropdown",
                 )
 
-            hyp_budget = st.number_input(
+            hyp_budget = st.slider(
                 "Budget / asking price (SGD)",
                 min_value=50000,
                 max_value=3000000,
@@ -494,105 +515,105 @@ def _save_hypothetical_flat(inputs, listings_df):
                 step=10000,
             )
 
+            hyp_remaining_lease_years = st.slider(
+                "Remaining lease (years)",
+                min_value=1,
+                max_value=99,
+                value=int(getattr(inputs, "remaining_lease_years", 70)),
+                step=1,
+            )           
+
         with col2:
-            hyp_area = st.number_input(
+            hyp_area = st.slider(
                 "Floor area (sqm)",
                 min_value=20.0,
                 max_value=300.0,
                 value=float(inputs.floor_area_sqm) if getattr(inputs, "floor_area_sqm", None) else 90.0,
                 step=1.0,
             )
+
             hyp_flat_type = st.selectbox(
-                "Flat type (number of rooms)",
+                "Flat type",
                 options=room_options,
                 index=room_options.index(default_type),
             )
+
             hyp_floor_pref = st.selectbox(
                 "Floor preference",
                 options=floor_options,
                 index=1,
             )
 
-        submitted = st.form_submit_button("Save flat")
+            submitted = st.button("Add hypothetical flat to comparison", type="primary")
 
-    if not submitted:
-        return False
+        if not submitted:
+            return False
 
-    # Re-run lookup on submit to be safe
-    detected_towns_submit = _lookup_towns_from_postal(hyp_postal)
+        detected_towns_submit = _lookup_towns_from_postal(hyp_postal)
+        if len(detected_towns_submit) == 1:
+            hyp_town = detected_towns_submit[0]
 
-    if len(detected_towns_submit) == 1:
-        hyp_town = detected_towns_submit[0]
-    elif len(detected_towns_submit) > 1:
-        # keep selected option from selectbox
-        pass
+        if not hyp_town:
+            st.warning("Please enter a town for the hypothetical flat.")
+            return False
 
-    if not hyp_town:
-        st.warning("Please enter a town for the hypothetical flat.")
-        return False
+        scenario_inputs = UserInputs(
+            budget=hyp_budget,
+            flat_type=hyp_flat_type,
+            floor_area_sqm=hyp_area,
+            remaining_lease_years=int(hyp_remaining_lease_years),
+            town=hyp_town,
+            school_scope=inputs.school_scope,
+            amenity_rank=getattr(inputs, "amenity_rank", []),
+            amenity_weights=inputs.amenity_weights,
+            landmark_postals=inputs.landmark_postals,
+        )
 
-    scenario_inputs = UserInputs(
-        budget=hyp_budget,
-        flat_type=hyp_flat_type,
-        floor_area_sqm=hyp_area,
-        lease_commence_year=inputs.lease_commence_year,
-        town=hyp_town,
-        school_scope=inputs.school_scope,
-        amenity_weights=inputs.amenity_weights,
-        landmark_postals=inputs.landmark_postals,
-    )
+        try:
+            bundle = get_prediction_bundle(scenario_inputs)
+            predicted_price = bundle.get("predicted_price", hyp_budget)
+            recent_transacted = bundle.get("recent_median_transacted", np.nan)
+        except Exception:
+            predicted_price = hyp_budget
+            recent_transacted = np.nan
 
-    try:
-        bundle = get_prediction_bundle(scenario_inputs)
-        predicted_price = bundle.get("predicted_price", hyp_budget)
-        recent_transacted = bundle.get("recent_median_transacted", np.nan)
-    except Exception:
-        predicted_price = hyp_budget
-        recent_transacted = np.nan
-
-    if pd.notna(predicted_price) and predicted_price != 0:
-        asking_vs_predicted_pct = ((hyp_budget - predicted_price) / predicted_price) * 100
-    else:
-        asking_vs_predicted_pct = np.nan
-
-    valuation_label = "Hypothetical"
-    if pd.notna(asking_vs_predicted_pct):
-        if asking_vs_predicted_pct <= -5:
-            valuation_label = "Good deal"
-        elif asking_vs_predicted_pct >= 5:
-            valuation_label = "Overpriced"
+        if pd.notna(predicted_price) and predicted_price != 0:
+            asking_vs_predicted_pct = ((hyp_budget - predicted_price) / predicted_price) * 100
         else:
-            valuation_label = "Fairly priced"
+            asking_vs_predicted_pct = np.nan
 
-    user_saved = saved_store[user]
-    new_id = _next_hypothetical_id(user_saved)
+        valuation_label = "Hypothetical"
+        if pd.notna(asking_vs_predicted_pct):
+            if asking_vs_predicted_pct <= -5:
+                valuation_label = "Good deal"
+            elif asking_vs_predicted_pct >= 5:
+                valuation_label = "Overpriced"
+            else:
+                valuation_label = "Fairly priced"
 
-    new_flat = {
-        "listing_id": new_id,
-        "comparison_source": "Hypothetical flat",
-        "postal_code": hyp_postal.strip() if hyp_postal else "",
-        "town": hyp_town,
-        "flat_type": hyp_flat_type,
-        "floor_area_sqm": hyp_area,
-        "storey_range": hyp_floor_pref,
-        "asking_price": float(hyp_budget),
-        "predicted_price": float(predicted_price) if pd.notna(predicted_price) else np.nan,
-        "recent_median_transacted": recent_transacted,
-        "asking_vs_predicted_pct": asking_vs_predicted_pct,
-        "valuation_label": valuation_label,
-        "lease_commence_year": inputs.lease_commence_year,
-        "score": 70.0,
-    }
+        custom_rows = st.session_state.get("custom_compare_rows", [])
+        new_id = _next_hypothetical_id(custom_rows)
 
-    user_saved.append(new_flat)
-    st.session_state.saved_flats[user] = user_saved
+        new_row = {
+            "listing_id": new_id,
+            "comparison_source": "Hypothetical flat",
+            "postal_code": hyp_postal.strip() if hyp_postal else "",
+            "town": hyp_town,
+            "flat_type": hyp_flat_type,
+            "floor_area_sqm": hyp_area,
+            "storey_range": hyp_floor_pref,
+            "asking_price": float(hyp_budget),
+            "predicted_price": float(predicted_price) if pd.notna(predicted_price) else np.nan,
+            "recent_median_transacted": recent_transacted,
+            "asking_vs_predicted_pct": asking_vs_predicted_pct,
+            "valuation_label": valuation_label,
+            "remaining_lease_years": hyp_remaining_lease_years,
+            "score": 70.0,
+        }
 
-    selected = st.session_state.get("selected_saved_flats_for_compare", [])
-    if new_id not in selected:
-        st.session_state.selected_saved_flats_for_compare = selected + [new_id]
-
-    st.success(f"Saved flat {new_id} for comparison.")
-    return True
+        st.session_state.custom_compare_rows = custom_rows + [new_row]
+        st.success(f"Added {new_id} to the comparison.")
+        return True
 
 
 # =========================================================
@@ -629,9 +650,28 @@ def _render_listing_score_cards(selected_df):
     cols = st.columns(len(selected_df))
 
     for i, (_, row) in enumerate(selected_df.iterrows()):
+        lid = row.get("listing_id")
+
         with cols[i]:
             with st.container(border=True):
-                st.markdown(f"#### {_format_listing_label(row)}")
+                title_col, close_col = st.columns([8, 0.9])
+
+                with title_col:
+                    st.markdown(f"#### {_format_listing_label(row)}")
+
+                with close_col:
+                    if st.button("×", key=f"remove_compare_{lid}", help="Remove from comparison"):
+                        if str(lid).startswith("HYP-"):
+                            st.session_state.custom_compare_rows = [
+                                r for r in st.session_state.get("custom_compare_rows", [])
+                                if r.get("listing_id") != lid
+                            ]
+                        else:
+                            st.session_state.compare_selected_ids = [
+                                x for x in st.session_state.get("compare_selected_ids", [])
+                                if x != lid
+                            ]
+                        st.rerun()
 
                 st.write(f"**Town:** {row.get('town', '—')}")
 
@@ -642,12 +682,20 @@ def _render_listing_score_cards(selected_df):
                 pred_text = fmt_sgd(predicted_price) if pd.notna(predicted_price) else "—"
                 st.write(f"**Predicted Price:** {pred_text}")
 
+                asking_price = row.get("asking_price", np.nan)
+                ask_text = fmt_sgd(asking_price) if pd.notna(asking_price) else "—"
+                st.write(f"**Asking Price:** {ask_text}")
+
                 st.write(f"**Flat Type:** {row.get('flat_type', '—')}")
                 st.write(f"**Floor Area:** {row.get('floor_area_sqm', '—')} sqm")
                 st.write(f"**Floor Level:** {row.get('storey_range', '—')}")
 
+                if "remaining_lease_years" in row and pd.notna(row.get("remaining_lease_years")):
+                    st.write(f"**Remaining Lease:** {row.get('remaining_lease_years')} years")
+
                 if "comparison_source" in row:
-                    st.write(f"**Source:** {row.get('comparison_source', 'Saved flat')}")
+                    source = row.get("comparison_source", "Saved flat")
+                    st.write(f"**Source:** {source}")
 
                 st.divider()
 
@@ -689,7 +737,7 @@ def _render_listing_score_cards(selected_df):
                     st.caption("Generally aligns well with the user's priorities")
                 else:
                     st.caption("Suitable, but less aligned with the user's preferred balance of factors")
-                    
+
 def _render_metric_bar_chart(selected_df, metric_col, chart_title):
     chart_df = selected_df.copy()
     chart_df[metric_col] = pd.to_numeric(chart_df[metric_col], errors="coerce").fillna(0)
@@ -827,7 +875,7 @@ def _render_detailed_breakdown(selected_df):
         "postal_code": "Postal Code",
         "flat_type": "Flat Type",
         "floor_area_sqm": "Floor Area (sqm)",
-        "lease_commence_year": "Lease Commence Year",
+        "remaining_lease_years": "Remaining Lease (years)",
         "value_score": "Value-for-money",
         "accessibility_score": "Accessibility",
         "fit_score": "Fit",
@@ -886,85 +934,60 @@ def _render_score_interpretation():
 # Main page
 # =========================================================
 def render_comparison_page(inputs, listings_df: pd.DataFrame):
-    st.markdown("## Comparison tool")
+    top_left, top_right = st.columns([1, 5])
 
-    user = st.session_state.get("current_user")
-    if not user:
-        st.info("Please log in first to use the comparison tool.")
-        return
+    with top_left:
+        if st.button("← Saved", use_container_width=True):
+            st.session_state.active_page = "Saved"
+            st.rerun()
 
-    st.session_state.setdefault("saved_flats", {})
-    st.session_state.setdefault("selected_saved_flats_for_compare", [])
+    with top_right:
+        st.markdown("## Comparison tool")
 
-    saved_df = _get_saved_df_for_user()
+    st.session_state.setdefault("custom_compare_rows", [])
 
-    st.markdown("### Step 1 — Select saved flats")
+    if listings_df is None:
+        listings_df = pd.DataFrame()
 
-    if not saved_df.empty:
-        merged_df = _merge_saved_with_latest(saved_df, listings_df, inputs)
-        merged_df = _prepare_comparison_scores(merged_df, inputs)
-
-        if "comparison_source" not in merged_df.columns:
-            merged_df["comparison_source"] = "Saved flat"
-        else:
-            merged_df["comparison_source"] = merged_df["comparison_source"].fillna("Saved flat")
-
-        default_selection = merged_df["listing_id"].tolist()[: min(3, len(merged_df))]
-        current_selected = st.session_state.get("selected_saved_flats_for_compare", default_selection)
-
-        selected_ids = st.multiselect(
-            "Choose saved flats to compare",
-            options=merged_df["listing_id"].tolist(),
-            default=current_selected,
-            format_func=lambda x: (
-                f"{x} · "
-                f"{merged_df.loc[merged_df['listing_id'] == x, 'town'].iloc[0]} · "
-                f"{merged_df.loc[merged_df['listing_id'] == x, 'flat_type'].iloc[0]} · "
-                f"{fmt_sgd(merged_df.loc[merged_df['listing_id'] == x, 'asking_price'].iloc[0])}"
-            ),
-            placeholder="Select saved flats to compare",
-        )
-        st.session_state.selected_saved_flats_for_compare = selected_ids
-    else:
-        merged_df = pd.DataFrame()
-        st.info("No saved flats yet — save some flats from Best matches or create a hypothetical flat below.")
-
-    st.markdown("---")
-
-    created_new_hypothetical = _save_hypothetical_flat(inputs, listings_df)
+    created_new_hypothetical = _render_add_hypothetical_flat(inputs)
     if created_new_hypothetical:
         st.rerun()
 
-    saved_df = _get_saved_df_for_user()
-    if saved_df.empty:
+    custom_df = pd.DataFrame(st.session_state.get("custom_compare_rows", []))
+
+    if listings_df.empty and custom_df.empty:
+        st.info("No flats selected yet. Go to Saved to pick flats, or add a hypothetical flat above.")
         return
 
-    merged_df = _merge_saved_with_latest(saved_df, listings_df, inputs)
-    merged_df = _prepare_comparison_scores(merged_df, inputs)
+    frames = []
 
-    if "comparison_source" not in merged_df.columns:
-        merged_df["comparison_source"] = "Saved flat"
+    if not listings_df.empty:
+        real_df = listings_df.copy()
+        if "comparison_source" not in real_df.columns:
+            real_df["comparison_source"] = "Saved flat"
+        else:
+            real_df["comparison_source"] = real_df["comparison_source"].fillna("Saved flat")
+        frames.append(real_df)
+
+    if not custom_df.empty:
+        frames.append(custom_df.copy())
+
+    selected_df = pd.concat(frames, ignore_index=True)
+    selected_df = _prepare_comparison_scores(selected_df, inputs)
+
+    if "comparison_source" not in selected_df.columns:
+        selected_df["comparison_source"] = "Saved flat"
     else:
-        merged_df["comparison_source"] = merged_df["comparison_source"].fillna("Saved flat")
-
-    selected_ids = st.session_state.get("selected_saved_flats_for_compare", [])
-
-    st.markdown("### Step 2 — Compare")
-    selected_df = merged_df[merged_df["listing_id"].isin(selected_ids)].copy()
-
-    if selected_df.empty:
-        st.info("Select at least one saved or hypothetical flat to compare.")
-        return
+        selected_df["comparison_source"] = selected_df["comparison_source"].fillna("Saved flat")
 
     selected_df = selected_df.sort_values("overall_score", ascending=False).reset_index(drop=True)
 
     if len(selected_df) < 2:
-        st.warning("Select at least 2 saved flats for a more meaningful comparison.")
+        st.warning("Select at least 2 flats for a more meaningful comparison.")
 
     _render_summary_cards(selected_df)
     st.markdown("---")
 
-    # Removed the old dataframe table here
     _render_listing_score_cards(selected_df)
     st.markdown("---")
 
@@ -981,19 +1004,3 @@ def render_comparison_page(inputs, listings_df: pd.DataFrame):
     st.markdown("---")
 
     _render_score_interpretation()
-
-    st.markdown("---")
-    st.markdown("### Manage saved flats")
-    remove_ids = st.multiselect(
-        "Remove saved flats",
-        options=merged_df["listing_id"].tolist(),
-        key="remove_saved_flats",
-    )
-
-    if st.button("Remove selected flats"):
-        all_saved = st.session_state.saved_flats.get(user, [])
-        st.session_state.saved_flats[user] = [
-            flat for flat in all_saved if flat["listing_id"] not in remove_ids
-        ]
-        st.success("Selected flats removed.")
-        st.rerun()

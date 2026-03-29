@@ -136,8 +136,8 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
             st.session_state.compare_selected_ids = all_ids
             st.rerun()
     with c3:
-        if st.button("Compare selected →", type="primary", use_container_width=True,
-                     disabled=len(selected_ids) < 2):
+        btn_label = "Go to Compare →" if len(selected_ids) == 0 else f"Go to Compare ({len(selected_ids)}) →"
+        if st.button(btn_label, type="primary", use_container_width=True):
             st.session_state.active_page = "Compare"
             st.rerun()
 

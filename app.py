@@ -14,6 +14,7 @@ Flow:
 import streamlit as st
 import streamlit.components.v1 as components
 import base64
+import pandas as pd
 from pathlib import Path
 from PIL import Image as _PILImage
 
@@ -753,39 +754,22 @@ def _render_value_strip(bundle: dict, inputs):
 # ── Compare ───────────────────────────────────────────────────────────────────
 
 def _render_compare():
-    from frontend.state.session import get_liked_df
+    from frontend.state.session import get_liked_df, get_active_session
 
     selected_ids = st.session_state.get("compare_selected_ids", [])
 
-    if not selected_ids:
-        st.markdown(
-            "<h2 style='font-size:1.65rem;font-weight:800;letter-spacing:-0.03em;"
-            "color:#1a1a2e;margin-bottom:0.8rem;'>Comparison</h2>",
-            unsafe_allow_html=True,
-        )
-        st.info("Select flats in the **Saved** tab to compare them here. You need at least 2.")
-        if st.button("Go to Saved →", type="primary"):
-            st.session_state.active_page = "Saved"
-            st.rerun()
-        return
-
     liked_df = get_liked_df()
-    if liked_df.empty:
-        st.info("No saved flats found.")
-        return
+    compare_df = pd.DataFrame()
 
-    compare_df = liked_df[liked_df["listing_id"].isin(selected_ids)]
-    if len(compare_df) < 2:
-        st.warning("Please select at least 2 flats in the Saved tab.")
-        return
+    if not liked_df.empty and selected_ids:
+        compare_df = liked_df[liked_df["listing_id"].isin(selected_ids)].copy()
 
-    session = st.session_state.search_sessions[0] if st.session_state.search_sessions else None
+    session = get_active_session()
     if session is None:
-        st.error("No session found.")
+        st.error("No active session found.")
         return
 
     render_comparison_page(inputs=session["inputs"], listings_df=compare_df)
-
-
+    
 if __name__ == "__main__":
     main()
