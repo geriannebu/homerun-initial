@@ -754,11 +754,11 @@ def _render_value_strip(bundle: dict, inputs):
 # ── Compare ───────────────────────────────────────────────────────────────────
 
 def _render_compare():
-    from frontend.state.session import get_liked_df, get_active_session
+    from frontend.state.session import get_active_session_liked_df, get_active_session
 
     selected_ids = st.session_state.get("compare_selected_ids", [])
 
-    liked_df = get_liked_df()
+    liked_df = get_active_session_liked_df()
     compare_df = pd.DataFrame()
 
     if not liked_df.empty and selected_ids:

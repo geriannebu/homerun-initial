@@ -75,29 +75,34 @@ def make_session_label(inputs) -> str:
 def create_search_session(inputs, bundle, map_bundle) -> str:
     """Create a new search session and return its ID."""
     import uuid
+
     session_id = str(uuid.uuid4())[:8]
     listing_ids = list(bundle["listings_df"]["listing_id"].values)
 
     session = {
-        "session_id":  session_id,
-        "label":       make_session_label(inputs),
-        "inputs":      inputs,
-        "bundle":      bundle,
-        "map_bundle":  map_bundle,
-        "liked_ids":   [],
-        "super_ids":   [],
-        "passed_ids":  [],
-        "unseen_ids":  listing_ids.copy(),
-        "created_at":  datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "session_id": session_id,
+        "label": make_session_label(inputs),
+        "inputs": inputs,
+        "bundle": bundle,
+        "map_bundle": map_bundle,
+        "liked_ids": [],
+        "super_ids": [],
+        "passed_ids": [],
+        "unseen_ids": listing_ids.copy(),
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
 
     st.session_state.search_sessions.append(session)
     st.session_state.active_session_id = session_id
     st.session_state.deck_index = 0
 
+    # Clear compare state for new session
+    st.session_state.compare_selected_ids = []
+    st.session_state.custom_compare_rows = []
+
     # Keep legacy keys working
-    st.session_state.latest_inputs    = inputs
-    st.session_state.latest_bundle    = bundle
+    st.session_state.latest_inputs = inputs
+    st.session_state.latest_bundle = bundle
     st.session_state.latest_map_bundle = map_bundle
     st.session_state.insights_generated = True
 
@@ -161,5 +166,27 @@ def get_liked_df():
             rows.append(row)
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
+def get_active_session_liked_df():
+    """Return a DataFrame of liked listings for the currently active session only."""
+    import pandas as pd
 
+    session = get_active_session()
+    if session is None or session.get("bundle") is None:
+        return pd.DataFrame()
+
+    df = session["bundle"]["listings_df"]
+    rows = []
+
+    for lid in session.get("liked_ids", []):
+        match = df[df["listing_id"] == lid]
+        if match.empty:
+            continue
+
+        row = match.iloc[0].to_dict()
+        row["session_label"] = session["label"]
+        row["session_id"] = session["session_id"]
+        row["is_super"] = lid in session.get("super_ids", [])
+        rows.append(row)
+
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
 

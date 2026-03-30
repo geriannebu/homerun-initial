@@ -537,6 +537,8 @@ def _render_history():
         st.info("No search sessions yet.")
         return
 
+    st.session_state.setdefault("selected_history_session_id", None)
+
     st.markdown(
         f"<p style='font-size:0.72rem;font-weight:700;text-transform:uppercase;"
         f"letter-spacing:0.08em;color:#059E87;margin-bottom:0.8rem;'>"
@@ -549,9 +551,20 @@ def _render_history():
         n_super  = len(s["super_ids"])
         n_pass   = len(s["passed_ids"])
         n_unseen = len(s["unseen_ids"])
-        is_active = s["session_id"] == st.session_state.get("active_session_id")
 
-        border = "2px solid #059E87" if is_active else "1px solid #e4e7ed"
+        is_active = s["session_id"] == st.session_state.get("active_session_id")
+        is_selected = s["session_id"] == st.session_state.get("selected_history_session_id")
+
+        if is_active:
+            border = "2px solid #059E87"
+            bg = "#f0fdf9"
+        elif is_selected:
+            border = "2px solid #FF6B6B"
+            bg = "#fff5f5"
+        else:
+            border = "1px solid #e4e7ed"
+            bg = "#ffffff"
+
         active_badge = (
             "<span style='font-size:0.68rem;font-weight:700;color:#059E87;"
             "background:#e6f7f4;border:1px solid #a7e8dc;border-radius:999px;"
@@ -559,13 +572,20 @@ def _render_history():
             if is_active else ""
         )
 
+        selected_badge = (
+            "<span style='font-size:0.68rem;font-weight:700;color:#b91c1c;"
+            "background:#fee2e2;border:1px solid #fecaca;border-radius:999px;"
+            "padding:2px 7px;margin-left:6px;'>Selected</span>"
+            if is_selected and not is_active else ""
+        )
+
         st.markdown(
             f"""
             <div style="border:{border};border-radius:14px;padding:14px 16px;
-                        margin-bottom:10px;background:#fff;">
+                        margin-bottom:10px;background:{bg};">
                 <div style="display:flex;align-items:center;margin-bottom:4px;">
                     <span style="font-size:0.9rem;font-weight:700;color:#0f172a;">
-                        {s['label']}</span>{active_badge}
+                        {s['label']}</span>{active_badge}{selected_badge}
                 </div>
                 <div style="font-size:0.74rem;color:#9ca3af;margin-bottom:10px;">
                     {s['created_at']}
@@ -584,11 +604,29 @@ def _render_history():
         )
 
         if not is_active:
-            if st.button("Resume this session →", key=f"resume_{s['session_id']}"):
-                st.session_state.active_session_id = s["session_id"]
-                st.session_state.active_page       = "Discover"
+            btn_label = "Selected" if is_selected else "Select this session"
+            if st.button(btn_label, key=f"select_history_{s['session_id']}", use_container_width=True):
+                st.session_state.selected_history_session_id = s["session_id"]
                 st.rerun()
 
+    selected_session_id = st.session_state.get("selected_history_session_id")
+    if selected_session_id:
+        selected_session = next(
+            (s for s in sessions if s["session_id"] == selected_session_id),
+            None
+        )
+
+        if selected_session and selected_session_id != st.session_state.get("active_session_id"):
+            st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+            st.info(f"Selected session: {selected_session['label']}")
+
+            if st.button("Resume selected session →", type="primary", use_container_width=True):
+                st.session_state.active_session_id = selected_session["session_id"]
+                st.session_state.compare_selected_ids = []
+                st.session_state.custom_compare_rows = []
+                st.session_state.selected_history_session_id = None
+                st.session_state.active_page = "Discover"
+                st.rerun()
 
 # ── Settings ──────────────────────────────────────────────────────────────────
 

@@ -224,11 +224,12 @@ def _prepare_comparison_scores(df, inputs):
 
 
 def _format_listing_label(row):
+    listing_id = row.get("listing_id", "")
     town = row.get("town", "Unknown")
     flat_type = row.get("flat_type", "Flat")
-    return f"{str(flat_type).title()} at {str(town).title()}"
 
-
+    base = f"{str(flat_type).title()} at {str(town).title()}"
+    return f"{listing_id} · {base}" if listing_id else base
 
 # =========================================================
 # Styling
@@ -651,16 +652,18 @@ def _render_listing_score_cards(selected_df):
 
     for i, (_, row) in enumerate(selected_df.iterrows()):
         lid = row.get("listing_id")
+        row_uid = f"{row.get('listing_id', '')}_{row.get('session_id', 'na')}_{i}"
 
         with cols[i]:
             with st.container(border=True):
                 title_col, close_col = st.columns([8, 0.9])
 
                 with title_col:
-                    st.markdown(f"#### {_format_listing_label(row)}")
+                    st.markdown(f"#### {row.get('listing_id', '')}")
+                    st.caption(f"{str(row.get('flat_type', 'Flat')).title()} at {str(row.get('town', 'Unknown')).title()}")
 
                 with close_col:
-                    if st.button("×", key=f"remove_compare_{lid}", help="Remove from comparison"):
+                    if st.button("×", key=f"remove_compare_{row_uid}", help="Remove from comparison"):
                         if str(lid).startswith("HYP-"):
                             st.session_state.custom_compare_rows = [
                                 r for r in st.session_state.get("custom_compare_rows", [])
