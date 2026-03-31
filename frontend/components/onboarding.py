@@ -65,88 +65,107 @@ ACCENT_BORDER = "#FF4458"
 
 # ── Preferences / lifestyle quiz config ──────────────────────────────────────
 
-LIFESTYLE_QUESTIONS = [
+QUESTION_BANK = [
     {
-        "id": "evening",
-        "title": "Your lifestyle",
-        "question": "Which of these feels most like your usual evening?",
+        "id": "q1",
+        "text": "Which of these feels most like your usual evening?",
         "options": [
-            ("Taking the MRT home and grabbing dinner nearby", {"mrt": 3, "hawker": 1}),
-            ("Heading somewhere with lots of shops and food options", {"retail": 3, "hawker": 1}),
-            ("Keeping things simple at home with easy access to essentials", {"bus": 1, "retail": 1}),
+            {"id": "q1_a", "label": "Whipping something up at home", "amenity": "supermarket"},
+            {"id": "q1_b", "label": "Grabbing a quick meal nearby", "amenity": "hawker"},
+            {"id": "q1_c", "label": "Heading to the mall for dinner and errands", "amenity": "mall"},
         ],
     },
     {
-        "id": "commute_home",
-        "title": "Your lifestyle",
-        "question": "What makes getting home feel easiest?",
+        "id": "q2",
+        "text": "What makes getting home feel easiest?",
         "options": [
-            ("A quick MRT ride", {"mrt": 3, "bus": 1}),
-            ("A bus stop close to home", {"bus": 3, "mrt": 1}),
-            ("Car / Grab", {"healthcare": 1}),
+            {"id": "q2_a", "label": "A fast MRT ride", "amenity": "train"},
+            {"id": "q2_b", "label": "A bus stop close to home", "amenity": "bus"},
+            {"id": "q2_c", "label": "Car / Grab", "amenity": None},
         ],
     },
     {
-        "id": "food_preference",
-        "title": "Your lifestyle",
-        "question": "How do you prefer to get food?",
+        "id": "q3",
+        "text": "How do you usually stock up on food?",
         "options": [
-            ("Affordable cooked food nearby", {"hawker": 3}),
-            ("Food and errands all in one place", {"retail": 3, "hawker": 1}),
-            ("I care less about food options than getting around easily", {"mrt": 2, "bus": 2}),
+            {"id": "q3_a", "label": "Frequent supermarket top-ups", "amenity": "supermarket"},
+            {"id": "q3_b", "label": "I mostly eat out or takeaway", "amenity": "hawker"},
+            {"id": "q3_c", "label": "I usually buy food while at the mall", "amenity": "mall"},
         ],
     },
     {
-        "id": "weekday_convenience",
-        "title": "Your lifestyle",
-        "question": "Which convenience matters to you most?",
+        "id": "q4",
+        "text": "On a busy weekday, which convenience matters most?",
         "options": [
-            ("Quick access to public transport", {"mrt": 2, "bus": 2}),
-            ("A mall nearby for one-stop convenience", {"retail": 3}),
-            ("Healthcare nearby for peace of mind", {"healthcare": 3}),
+            {"id": "q4_a", "label": "Bus stop downstairs", "amenity": "bus"},
+            {"id": "q4_b", "label": "Mall nearby for one-stop convenience", "amenity": "mall"},
+            {"id": "q4_c", "label": "Polyclinic nearby for peace of mind", "amenity": "polyclinic"},
         ],
     },
     {
-        "id": "weekend",
-        "title": "Your lifestyle",
-        "question": "What sounds most like your weekend?",
+        "id": "q5",
+        "text": "Which of these would improve your daily routine the most?",
         "options": [
-            ("Buying food nearby and chilling at home", {"hawker": 3, "retail": 1}),
-            ("Shopping, cafés, and running errands", {"retail": 3}),
-            ("Family-focused plans where nearby schools and amenities matter", {"schools": 3, "healthcare": 1}),
+            {"id": "q5_a", "label": "Shorter MRT commute", "amenity": "train"},
+            {"id": "q5_b", "label": "Affordable food options nearby", "amenity": "hawker"},
+            {"id": "q5_c", "label": "Groceries within easy reach", "amenity": "supermarket"},
         ],
     },
     {
-        "id": "settled_neighbourhood",
-        "title": "Your lifestyle",
-        "question": "Which would make you feel more settled in a neighbourhood?",
+        "id": "q6",
+        "text": "What sounds most like your weekend?",
         "options": [
-            ("Strong transport connectivity", {"mrt": 2, "bus": 2}),
-            ("Good school access for my household", {"schools": 3}),
-            ("Healthcare close by", {"healthcare": 3}),
+            {"id": "q6_a", "label": "Walking around the mall", "amenity": "mall"},
+            {"id": "q6_b", "label": "Meal prep and grocery run", "amenity": "supermarket"},
+            {"id": "q6_c", "label": "Trying nearby food spots", "amenity": "hawker"},
         ],
     },
     {
-        "id": "pop_out_quickly",
-        "title": "Your lifestyle",
-        "question": "If you need to pop out quickly, what would you most want nearby?",
+        "id": "q7",
+        "text": "Which would make you feel more settled in a neighbourhood?",
         "options": [
-            ("MRT station", {"mrt": 3}),
-            ("Bus stop", {"bus": 3}),
-            ("Mall with many things in one place", {"retail": 3}),
+            {"id": "q7_a", "label": "Healthcare nearby", "amenity": "polyclinic"},
+            {"id": "q7_b", "label": "School access is important for my household", "amenity": "primary_school"},
+            {"id": "q7_c", "label": "Good transport connectivity", "amenity": "train"},
         ],
     },
     {
-        "id": "tradeoff",
-        "title": "Your lifestyle",
-        "question": "Which trade-off would you choose?",
+        "id": "q8",
+        "text": "If you need to pop out quickly, what would you most want nearby?",
         "options": [
-            ("Near MRT over more food options", {"mrt": 3, "hawker": -1}),
-            ("Near hawker over faster transport", {"hawker": 3, "mrt": -1}),
-            ("Near schools / healthcare over both", {"schools": 2, "healthcare": 2}),
+            {"id": "q8_a", "label": "Bus stop", "amenity": "bus"},
+            {"id": "q8_b", "label": "Mall with many things in one place", "amenity": "mall"},
+            {"id": "q8_c", "label": "Polyclinic", "amenity": "polyclinic"},
+        ],
+    },
+    {
+        "id": "q9",
+        "text": "Which statement sounds most like you?",
+        "options": [
+            {"id": "q9_a", "label": "School access is important now or soon", "amenity": "primary_school"},
+            {"id": "q9_b", "label": "Food convenience matters more", "amenity": "hawker"},
+            {"id": "q9_c", "label": "Transport convenience matters more", "amenity": "train"},
+        ],
+    },
+    {
+        "id": "q10",
+        "text": "Which trade-off would you choose?",
+        "options": [
+            {"id": "q10_a", "label": "Near MRT over more food options", "amenity": "train"},
+            {"id": "q10_b", "label": "Near hawker over faster transport", "amenity": "hawker"},
         ],
     },
 ]
+
+AMENITY_KEY_MAP = {
+    "train": "mrt",
+    "bus": "bus",
+    "polyclinic": "healthcare",
+    "primary_school": "schools",
+    "hawker": "hawker",
+    "mall": "retail",
+    "supermarket": "retail",
+}
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -208,6 +227,16 @@ def _back_btn(key: str = "back"):
 
 def _default_amenity_order():
     return list(AMENITY_LABELS.keys())
+
+
+def _compute_lifestyle_boosts(answers: dict) -> dict:
+    boosts = {}
+    for ans in answers.values():
+        amenity = ans.get("amenity")
+        mapped = AMENITY_KEY_MAP.get(amenity)
+        if mapped:
+            boosts[mapped] = boosts.get(mapped, 0) + 1
+    return boosts
 
 
 def _compute_predicted_amenity_rank():
@@ -546,14 +575,12 @@ def _render_budget():
             st.session_state.budget_slider_value = val
             st.session_state.budget_display_text = f"S${val:,.0f}"
 
-        # hide the ugly small helper text / labels and style big editable display
         st.markdown(
             """
             <style>
             div[data-testid="stTextInput"] label {
                 display: none !important;
             }
-
             div[data-testid="stTextInput"] input {
                 text-align: center !important;
                 font-family: "DM Sans", sans-serif !important;
@@ -567,13 +594,11 @@ def _render_budget():
                 padding-top: 0.15rem !important;
                 padding-bottom: 0.15rem !important;
             }
-
             div[data-testid="stTextInput"] > div {
                 border: none !important;
                 background: transparent !important;
                 box-shadow: none !important;
             }
-
             div[data-testid="stTextInput"] > div > div {
                 border: none !important;
                 background: transparent !important;
@@ -608,6 +633,7 @@ def _render_budget():
             st.rerun()
 
     _back_btn("budget_back")
+
 
 # ── Step 2: Flat type ────────────────────────────────────────────────────────
 
@@ -808,16 +834,16 @@ def _render_lifestyle():
     q_idx = st.session_state.get("lifestyle_q", 0)
     answers = st.session_state.get("lifestyle_answers", {})
 
-    if q_idx < len(LIFESTYLE_QUESTIONS):
-        q_conf = LIFESTYLE_QUESTIONS[q_idx]
+    if q_idx < len(QUESTION_BANK):
+        q_conf = QUESTION_BANK[q_idx]
         q_id = q_conf["id"]
-        q = q_conf["question"]
+        q_text = q_conf["text"]
         opts = q_conf["options"]
 
-        _heading(q_conf["title"], q)
+        _heading("Your lifestyle", q_text)
 
         dots_html = "<div style='display:flex;gap:6px;justify-content:center;margin-bottom:1.4rem;'>"
-        for i in range(len(LIFESTYLE_QUESTIONS)):
+        for i in range(len(QUESTION_BANK)):
             if i < q_idx:
                 col = ACCENT
                 w = "16px"
@@ -834,37 +860,26 @@ def _render_lifestyle():
         dots_html += "</div>"
         st.markdown(dots_html, unsafe_allow_html=True)
 
-        cols = st.columns(len(opts))
-        for i, (label, score) in enumerate(opts):
-            with cols[i]:
-                if st.button(label, key=f"ls_q{q_idx}_{i}", use_container_width=True):
-                    answers[q_id] = {
-                        "label": label,
-                        "score": score,
-                    }
-                    st.session_state["lifestyle_answers"] = answers
-                    st.session_state["lifestyle_q"] = q_idx + 1
-
-                    boosts = {}
-                    for ans in answers.values():
-                        for k, v in ans["score"].items():
-                            boosts[k] = boosts.get(k, 0) + v
-                    st.session_state["lifestyle_boosts"] = boosts
-                    st.rerun()
+        for i, opt in enumerate(opts):
+            if st.button(opt["label"], key=f"ls_q{q_idx}_{i}", use_container_width=True):
+                answers[q_id] = {
+                    "option_id": opt["id"],
+                    "label": opt["label"],
+                    "amenity": opt["amenity"],
+                }
+                st.session_state["lifestyle_answers"] = answers
+                st.session_state["lifestyle_q"] = q_idx + 1
+                st.session_state["lifestyle_boosts"] = _compute_lifestyle_boosts(answers)
+                st.rerun()
 
         if q_idx > 0:
             st.markdown("<div style='height:0.8rem'></div>", unsafe_allow_html=True)
             if st.button("← Previous question", key=f"ls_back_{q_idx}"):
-                prev_q_id = LIFESTYLE_QUESTIONS[q_idx - 1]["id"]
+                prev_q_id = QUESTION_BANK[q_idx - 1]["id"]
                 answers.pop(prev_q_id, None)
                 st.session_state["lifestyle_answers"] = answers
                 st.session_state["lifestyle_q"] = q_idx - 1
-
-                boosts = {}
-                for ans in answers.values():
-                    for k, v in ans["score"].items():
-                        boosts[k] = boosts.get(k, 0) + v
-                st.session_state["lifestyle_boosts"] = boosts
+                st.session_state["lifestyle_boosts"] = _compute_lifestyle_boosts(answers)
                 st.rerun()
 
     else:
