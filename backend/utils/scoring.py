@@ -36,25 +36,33 @@ def classify_listing(row):
 # Full score pipeline
 # FinalScore = α · AmenityScore + (1−α) · ValueScore
 # ---------------------------------------------------------------------------
+def _distance_score(dist):
+    if dist is None or np.isnan(dist):
+        return 40
+    if dist <= 300:
+        return 90
+    elif dist <= 600:
+        return 75
+    elif dist <= 1000:
+        return 60
+    else:
+        return 40
+
+
 def compute_listing_scores(listings_df, budget: int | None, amenity_weights: dict,
                            ranking_profile: str = "balanced"):
-    """Return a scored + ranked copy of listings_df.
-
-    New columns added:
-        value_score          — 0‥100, how well price matches model
-        budget_score         — 0‥100, how much budget headroom exists
-        overall_value_score  — composite value metric (kept for compat)
-        amenity_score        — 0‥100, proxy from amenity_weights
-        final_score          — FinalScore = α·amenity + (1−α)·value
-    """
     df = listings_df.copy()
-    alpha = RANKING_ALPHA.get(ranking_profile, 0.50)
 
-    # --- value score ---
+    # Ensure asking_vs_predicted_pct exists
+    if "asking_vs_predicted_pct" not in df.columns:
+        df["asking_vs_predicted_pct"] = ((df["asking_price"] - df["predicted_price"]) / df["predicted_price"]) * 100
+
+    alpha = RANKING_ALPHA.get(ranking_profile, 0.50)
+    # ─────────────────────────────────────────
+    # VALUE SCORE (unchanged — already correct)
+    # ─────────────────────────────────────────
     if budget is None:
-        # Flexible-budget mode: do not penalise listings based on budget
-        df["budget_gap"] = np.nan
-        df["budget_score"] = 50.0   # neutral middle score
+        df["budget_score"] = 50.0
     else:
         df["budget_gap"] = budget - df["asking_price"]
         df["budget_score"] = df["budget_gap"].apply(
@@ -63,35 +71,60 @@ def compute_listing_scores(listings_df, budget: int | None, amenity_weights: dic
 
     df["value_score"] = (
         100.0 - df["asking_vs_predicted_pct"]
-        .clip(lower=-20, upper=20)
-        .abs()
-        * 3.0
+        .clip(-20, 20)
+        .abs() * 3.0
     )
 
     df["overall_value_score"] = (
         0.55 * df["value_score"] + 0.45 * df["budget_score"]
     ).round(1)
 
-    # --- amenity score proxy ---
-    # Real implementation would look up distances; mock uses weight average + jitter.
-    rng_base = (
-        df["asking_price"].astype(int).apply(lambda p: p % 997)
-        + df.index
-    )
-    weight_avg = (
-        sum(amenity_weights.values()) / len(amenity_weights)
-        if amenity_weights else 3.0
-    )
-    df["amenity_score"] = (
-        60.0
-        + weight_avg * 5.0
-        + rng_base.apply(lambda seed: (seed % 21) - 10)
-    ).clip(0, 100).round(1)
+    # ─────────────────────────────────────────
+    # REAL AMENITY SCORE (FIXED)
+    # ─────────────────────────────────────────
 
-    # --- final score ---
+    df["mrt_score"] = df["train_1_dist_m"].apply(_distance_score)
+    df["bus_score"] = df["bus_1_dist_m"].apply(_distance_score)
+    df["school_score"] = df["school_1_dist_m"].apply(_distance_score)
+    df["hawker_score"] = df["hawker_1_dist_m"].apply(_distance_score)
+    df["mall_score"] = df["mall_1_dist_m"].apply(_distance_score)
+    df["health_score"] = df["polyclinic_1_dist_m"].apply(_distance_score)
+
+    # apply user weights
+    def weighted_amenity(row):
+        scores = {
+            "mrt": row["mrt_score"],
+            "bus": row["bus_score"],
+            "schools": row["school_score"],
+            "hawker": row["hawker_score"],
+            "retail": row["mall_score"],
+            "healthcare": row["health_score"],
+        }
+
+        total = 0
+        weight_sum = 0
+
+        for k, v in amenity_weights.items():
+            if k in scores:
+                total += scores[k] * v
+                weight_sum += v
+
+        return total / weight_sum if weight_sum > 0 else np.mean(list(scores.values()))
+
+    df["amenity_score"] = df.apply(weighted_amenity, axis=1).round(1)
+
+    # ─────────────────────────────────────────
+    # FINAL SCORE
+    # ─────────────────────────────────────────
     df["final_score"] = (
-        alpha * df["amenity_score"] + (1.0 - alpha) * df["value_score"]
+        alpha * df["amenity_score"] +
+        (1 - alpha) * df["value_score"]
     ).round(1)
+
+    # ─────────────────────────────────────────
+    # LABEL (important for UI)
+    # ─────────────────────────────────────────
+    df["valuation_label"] = df.apply(classify_listing, axis=1)
 
     return df.sort_values("final_score", ascending=False).reset_index(drop=True)
 

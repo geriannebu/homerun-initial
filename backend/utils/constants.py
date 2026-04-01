@@ -43,6 +43,8 @@ AMENITY_COLORS = {
     "retail": [227, 119, 194, 150],
 }
 
+AMENITY_KEYS = ["mrt", "bus", "schools", "hawker", "retail", "healthcare"]
+
 TOWN_COORDS = {
     "Ang Mo Kio": (1.3691, 103.8454),
     "Bedok": (1.3236, 103.9273),

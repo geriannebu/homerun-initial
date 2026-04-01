@@ -7,30 +7,19 @@ from backend.schemas.inputs import UserInputs
 
 from data.load_data import load_all_data
 
-def get_active_listings(inputs: UserInputs) -> pd.DataFrame:
+def get_active_listings(inputs):
     df, _ = load_all_data()
 
-    # --- FILTERING ---
     if inputs.town:
         df = df[df["town"] == inputs.town]
 
-    df = df[df["flat_type"] == inputs.flat_type]
+    if inputs.flat_type:
+        df = df[df["flat_type"] == inputs.flat_type]
 
-    # Optional: area filter
-    df = df[
-        (df["floor_area_sqm"] >= inputs.floor_area_sqm - 10) &
-        (df["floor_area_sqm"] <= inputs.floor_area_sqm + 10)
-    ]
-
-
-      # ── REQUIRED FIELDS ───────────────────────
-    df["listing_id"] = df.index.astype(str)
-    df["listing_url"] = "#"
-
-    # already exists in your dataset
-    df["recent_median_transacted"] = df["median_6m_similar"]
-
-    # valuation already computed
-    df["asking_vs_predicted_pct"] = df["valuation_pct"]
+    if inputs.floor_area_sqm:
+        df = df[
+            (df["floor_area_sqm"] >= inputs.floor_area_sqm - 10) &
+            (df["floor_area_sqm"] <= inputs.floor_area_sqm + 10)
+        ]
 
     return df.copy()

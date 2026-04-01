@@ -109,10 +109,14 @@ def show_listing_detail(listing_id: str):
     overall_score = round((value_score * 0.6 + amenity_avg * 0.4), 1)
 
     # ── HEADER ──────────────────────────────────────────────────────────
+    address = row.get("address", "")  # <-- full address from your dataset
+    town = row.get("town", "")
+
     st.markdown(f"""
     <div style="display:flex;justify-content:space-between;">
         <div>
             <h2>{town}</h2>
+            <p>{address}</p>   <!-- display the address -->
             <p>{flat_type} · {area} sqm · Storey {storey}</p>
         </div>
         <div style="text-align:right;">
@@ -143,16 +147,30 @@ def show_listing_detail(listing_id: str):
     # ── Amenity Breakdown ───────────────────────────────────────────────
     st.markdown("### 📍 Amenities Nearby")
 
-    def row_display(label, score, dist):
-        return f"{label}: {score:.0f} ({dist:.0f}m)"
+    def proximity_label(dist):
+        """Return a descriptive label based on distance."""
+        if dist is None or dist > 1500:
+            return "Very far"
+        elif dist > 1000:
+            return "Far"
+        elif dist > 600:
+            return "Moderate"
+        elif dist > 300:
+            return "Close"
+        else:
+            return "Very close"
 
-    st.write(row_display("🚇 MRT", mrt_score, row.get("train_1_dist_m", 0)))
-    st.write(row_display("🚌 Bus", bus_score, row.get("bus_1_dist_m", 0)))
-    st.write(row_display("🏫 School", school_score, row.get("school_1_dist_m", 0)))
-    st.write(row_display("🍜 Hawker", hawker_score, row.get("hawker_1_dist_m", 0)))
-    st.write(row_display("🛍️ Mall", retail_score, row.get("mall_1_dist_m", 0)))
-    st.write(row_display("🏥 Polyclinic", health_score, row.get("polyclinic_1_dist_m", 0)))
+    def row_display(label, dist, score):
+        prox = proximity_label(dist)
+        dist_val = f"{dist:.0f} m" if dist is not None else "N/A"
+        return f"{label}: {prox} ({dist_val}, score: {score})"
 
+    st.write(row_display("🚇 MRT", row.get("train_1_dist_m"), row.get("mrt_score")))
+    st.write(row_display("🚌 Bus", row.get("bus_1_dist_m"), row.get("bus_score")))
+    st.write(row_display("🏫 School", row.get("school_1_dist_m"), row.get("school_score")))
+    st.write(row_display("🍜 Hawker", row.get("hawker_1_dist_m"), row.get("hawker_score")))
+    st.write(row_display("🛍️ Mall", row.get("mall_1_dist_m"), row.get("mall_score")))
+    st.write(row_display("🏥 Polyclinic", row.get("polyclinic_1_dist_m"), row.get("health_score")))
     # ── Market context ──────────────────────────────────────────────────
     st.markdown("### 📊 Market Context")
 

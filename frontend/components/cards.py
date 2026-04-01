@@ -1,12 +1,14 @@
 from typing import Any, Dict
-
 import streamlit as st
 
 from backend.schemas.inputs import UserInputs
-from backend.utils.formatters import fmt_sgd, valuation_tag_html
+from backend.utils.formatters import fmt_sgd
 from backend.utils.scoring import compute_listing_scores
 
 
+# ---------------------------------------------------------------------------
+# Value Cards (Predicted vs Budget)
+# ---------------------------------------------------------------------------
 def render_value_cards(bundle: Dict[str, Any], budget: int):
     pred = bundle.get("predicted_price") or 0
     trans = bundle.get("recent_median_transacted") or 0
@@ -25,42 +27,74 @@ def render_value_cards(bundle: Dict[str, Any], budget: int):
         st.metric("Budget vs fair value", f"{gap_pct:+.1f}%")
 
 
+# ---------------------------------------------------------------------------
+# Budget Banner
+# ---------------------------------------------------------------------------
 def render_budget_banner(bundle: Dict[str,Any], budget: int):
     pred = bundle.get("predicted_price") or 0
     if not pred or budget is None:
-        st.markdown(f'<div class="nw-budget-warn">Budget info unavailable</div>', unsafe_allow_html=True)
+        st.info("Budget info unavailable")
         return
 
     gap  = (budget - pred)/pred
     if gap >= 0.05:
-        css, icon = "nw-budget-ok",   "✓"
-        msg = f"{icon} Your budget is {gap*100:.1f}% above the predicted fair value — you have good room to negotiate."
+        msg = f"✓ Your budget is {gap*100:.1f}% above the predicted fair value — you have good room to negotiate."
     elif gap >= -0.05:
-        css, icon = "nw-budget-warn", "△"
-        msg = f"{icon} Your budget is close to the predicted fair value ({gap*100:+.1f}%). Look for steals."
+        msg = f"△ Your budget is close to the predicted fair value ({gap*100:+.1f}%). Look for steals."
     else:
-        css, icon = "nw-budget-over", "↓"
-        msg = f"{icon} Your budget is {abs(gap)*100:.1f}% below the predicted fair value. Recommendation mode may surface better-value options."
-    st.markdown(f'<div class="{css}">{msg}</div>', unsafe_allow_html=True)
+        msg = f"↓ Your budget is {abs(gap)*100:.1f}% below the predicted fair value. Recommendation mode may surface better-value options."
+    
+    st.info(msg)
 
 
+# ---------------------------------------------------------------------------
+# HomeRun Pick Card
+# ---------------------------------------------------------------------------
 def render_homerun_pick(inputs: UserInputs, bundle: Dict[str,Any]):
-    if bundle["listings_df"].empty: return
-    ranked = compute_listing_scores(bundle["listings_df"], inputs.budget, inputs.amenity_weights)
+    if bundle["listings_df"].empty:
+        st.info("No listings available to pick from.")
+        return
+
+    # Ensure amenity weights exist
+    amenity_weights = getattr(inputs, "amenity_weights", None) or {
+        "mrt":1, "bus":1, "schools":1, "hawker":1, "retail":1, "healthcare":1
+    }
+
+    ranked = compute_listing_scores(bundle["listings_df"], inputs.budget, amenity_weights)
     top = ranked.sort_values("overall_value_score", ascending=False).iloc[0]
-    tag = valuation_tag_html(top["valuation_label"])
-    st.markdown(f"""
-    <div class="hr-pick">
-        <div class="hr-pick-icon">🏆</div>
-        <div style="flex:1">
-            <div class="hr-pick-label">HomeRun pick right now</div>
-            <div class="hr-pick-value">{top['listing_id']} &nbsp;·&nbsp; {top['town']}</div>
-            <div class="hr-pick-sub">
-                Asking {fmt_sgd(top['asking_price'])} &nbsp;·&nbsp; {tag} &nbsp;·&nbsp;
-                Overall score <strong>{top['overall_value_score']:.1f}</strong>/100
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
 
+    st.markdown("### 🏆 HomeRun Pick Right Now")
+    st.write(f"**Listing ID:** {top['listing_id']}")
+    st.write(f"**Town:** {top['town']}")
+    st.write(f"**Flat Type:** {top.get('flat_type', 'N/A')}")
+    st.write(f"**Floor Area:** {top.get('floor_area_sqm', 0)} sqm")
+    st.write(f"**Asking Price:** {fmt_sgd(top['asking_price'])}")
+    st.write(f"**Predicted Price:** {fmt_sgd(top['predicted_price'])}")
+    st.write(f"**Valuation:** {top['valuation_label']}")
+    st.write(f"**Overall Score:** {top['overall_value_score']:.1f}/100")
 
+    st.write("**Amenities Nearby:**")
+    for amen in ["mrt", "bus", "schools", "hawker", "retail", "healthcare"]:
+        score_col = f"{amen}_score"
+        dist_col = {
+            "mrt": "train_1_dist_m",
+            "bus": "bus_1_dist_m",
+            "schools": "school_1_dist_m",
+            "hawker": "hawker_1_dist_m",
+            "retail": "mall_1_dist_m",
+            "healthcare": "polyclinic_1_dist_m",
+        }[amen]
+
+        distance = top.get(dist_col, None)
+        score = top.get(score_col, None)
+        if distance is not None and score is not None:
+            if score >= 85:
+                closeness = "Very close"
+            elif score >= 70:
+                closeness = "Close"
+            elif score >= 50:
+                closeness = "Moderate"
+            else:
+                closeness = "Far"
+
+            st.write(f"• {amen.capitalize()}: {closeness} ({int(distance)} m, score: {score})")

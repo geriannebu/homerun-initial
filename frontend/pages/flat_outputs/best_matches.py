@@ -4,10 +4,8 @@ frontend/pages/flat_outputs/best_matches.py
 Tinder-style swipe deck:
   Right / ♥  → Like (shortlist)
   Left  / ✕  → Pass (skip)
-  Up    / ⭐  → Super-save (also goes to shortlist, highlighted)
+  Up    / ⭐  → Super-save (highlight + shortlist)
   Click card → Detail overlay
-
-State is written back to the active search session in session_state.
 """
 
 import json
@@ -75,7 +73,7 @@ def _why_match(row, inputs) -> str:
 
     for amen in top_amenities:
         score = float(row.get(f"{amen}_score", 0))
-        if score >= 50:  # Only mention relevant amenities
+        if score >= 50:
             icon = AMENITY_ICONS.get(amen, "")
             label = {
                 "mrt": "MRT access",
@@ -134,33 +132,17 @@ def render_listing_tab(listings_df: pd.DataFrame):
         return
 
     inputs = session["inputs"]
+
+    # Ensure unseen_ids are populated after quiz
+    if not session["unseen_ids"]:
+        session["unseen_ids"] = list(listings_df["listing_id"])
+        session["liked_ids"] = []
+        session["passed_ids"] = []
+        session["super_ids"] = []
+
     unseen_ids = session["unseen_ids"]
     liked_ids = session["liked_ids"]
     passed_ids = session["passed_ids"]
-
-    # ── Top nav strip ──────────────────────────────────────────────
-    col_brand, col_saved, col_compare, col_account = st.columns([3, 1, 1, 1])
-    with col_brand:
-        st.markdown(
-            "<div style='font-family:DM Sans;font-size:1rem;font-weight:800;"
-            "color:#0b132d;padding:6px 0;'>🏠 HomeRun</div>",
-            unsafe_allow_html=True,
-        )
-    with col_saved:
-        if st.button("♥ Saved", key="nav_saved", use_container_width=True):
-            st.session_state.active_page = "Saved"
-            st.rerun()
-    with col_compare:
-        if st.button("⚖️ Compare", key="nav_compare", use_container_width=True):
-            st.session_state.active_page = "Compare"
-            st.rerun()
-    with col_account:
-        if st.button("👤 Account", key="nav_account", use_container_width=True):
-            st.session_state.active_page = "Account"
-            st.rerun()
-
-    st.markdown("<hr style='margin:8px 0 12px;border:none;border-top:1px solid #f0f4f8;'>",
-                unsafe_allow_html=True)
 
     # ── Deck exhausted ─────────────────────────────────────────────
     if not unseen_ids:
@@ -172,11 +154,11 @@ def render_listing_tab(listings_df: pd.DataFrame):
     cards_json = json.dumps(cards)
     session_id = session["session_id"]
 
-    # ── Swipe iframe ───────────────────────────────────────────────
+    # ── Swipe deck iframe ─────────────────────────────────────────
     html = _build_swipe_html(cards_json)
     components.html(html, height=720, scrolling=False)
 
-    # ── Top card display for score + badges ─────────────────────────
+    # ── Top card info ─────────────────────────────────────────────
     top_card = cards[0] if cards else None
     if top_card:
         # Match score bar
@@ -237,8 +219,7 @@ def render_listing_tab(listings_df: pd.DataFrame):
         )
 
 
-# ───────────────────────── Swipe / Deck Utilities ────────────────────────────
-
+# ───────────────────────── Swipe Controls ────────────────────────────
 def _render_swipe_controls(session_id: str, top_id: str | None):
     if not top_id:
         return
@@ -260,6 +241,7 @@ def _render_swipe_controls(session_id: str, top_id: str | None):
             st.rerun()
 
 
+# ───────────────────────── Deck Done / Saved Preview ─────────────────────────
 def _render_deck_done(session: dict, listings_df: pd.DataFrame):
     liked = session["liked_ids"]
     supers = session["super_ids"]
@@ -310,69 +292,54 @@ def _render_deck_done(session: dict, listings_df: pd.DataFrame):
                     s["passed_ids"] = []
             st.rerun()
 
-    if liked:
-        st.markdown("---")
-        _render_saved_preview(session, listings_df)
 
-
-def _render_saved_preview(session: dict, listings_df: pd.DataFrame):
-    liked = session["liked_ids"]
-    supers = session["super_ids"]
-    saved_df = listings_df[listings_df["listing_id"].isin(liked)]
-    st.markdown(
-        f"<p style='font-size:0.72rem;font-weight:700;text-transform:uppercase;"
-        f"letter-spacing:0.08em;color:#059E87;margin-bottom:0.8rem;'>"
-        f"Saved from this session ({len(liked)})</p>",
-        unsafe_allow_html=True,
-    )
-    for _, row in saved_df.iterrows():
-        is_super = row["listing_id"] in supers
-        badge = "⭐ Super-saved" if is_super else "♥ Saved"
-        badge_col = "#d97706" if is_super else "#059E87"
-        diff = float(row.get("asking_vs_predicted_pct", 0))
-        tag = valuation_tag_html(row.get("valuation_label", ""))
-        st.markdown(
-            f"""
-            <div class="nw-listing">
-                <div class="nw-listing-header">
-                    <div>
-                        <div class="nw-listing-id">{row['listing_id']} · {row['town']}</div>
-                        <div class="nw-listing-meta">
-                            {row['flat_type']} · {row.get('floor_area_sqm','')} sqm
-                            · Storey {row.get('storey_range','')}
-                        </div>
-                    </div>
-                    <div>
-                        <div class="nw-listing-asking">{fmt_sgd(row['asking_price'])}</div>
-                        <div class="nw-listing-predicted">
-                            Predicted: {fmt_sgd(row['predicted_price'])}
-                        </div>
-                    </div>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
-                    {tag}
-                    <span style="font-size:0.78rem;color:#9ca3af;">{diff:+.1f}% vs model</span>
-                    <span style="font-size:0.74rem;font-weight:700;
-                          color:{badge_col};margin-left:auto;">{badge}</span>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if st.button("View details →", key=f"preview_detail_{row['listing_id']}", use_container_width=True):
-            show_listing_detail(str(row["listing_id"]))
-
-
+# ───────────────────────── Swipe Deck HTML ────────────────────────────
 def _build_swipe_html(cards_json: str) -> str:
-    """Returns the same HTML/JS from your previous implementation."""
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<!-- Keep the same HTML + JS from your previous best_matches.py -->
-<script>const CARDS={cards_json};</script>
-</head>
-<body>
-<div id="app"></div>
-</body>
-</html>"""
+    """Swipe deck: displays all cards stacked for demo, with card info."""
+    return f"""
+    <html>
+    <head>
+    <style>
+    body {{
+        font-family: sans-serif; margin:0; padding:0;
+        background: #f1f5f9; display:flex; justify-content:center;
+        height: 700px;
+    }}
+    #deck {{
+        width: 320px; height: 660px; position: relative; perspective: 1000px;
+    }}
+    .card {{
+        width: 300px; height: 420px; border-radius: 12px;
+        background: #fff; box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        position: absolute; top: 20px; left: 10px;
+        display: flex; flex-direction: column; justify-content: space-between;
+        padding: 16px; transition: all 0.3s ease;
+        overflow-wrap: break-word;
+    }}
+    .card h4 {{ margin: 0 0 4px 0; font-size: 1.1rem; }}
+    .card p {{ margin: 2px 0; font-size: 0.8rem; color:#334155; }}
+    </style>
+    </head>
+    <body>
+    <div id="deck"></div>
+    <script>
+    const cards = {cards_json};
+    const deck = document.getElementById('deck');
+
+    cards.forEach((c,i) => {{
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.zIndex = cards.length - i;
+        card.innerHTML = `
+            <h4>${{c.town}} · ${{c.flat_type}}</h4>
+            <p>Area: ${{c.area}} sqm · Storey: ${{c.storey}}</p>
+            <p>Asking: ${{c.asking.toLocaleString()}} SGD · Predicted: ${{c.predicted.toLocaleString()}} SGD</p>
+            <p><strong>${{c.label}}</strong> · ${{c.diff_pct}}% vs model</p>
+            <p>${{c.why}}</p>
+        `;
+        deck.appendChild(card);
+    }});
+    </script>
+    </body>
+    </html>
+    """
