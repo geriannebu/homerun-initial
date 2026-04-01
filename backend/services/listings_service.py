@@ -22,24 +22,15 @@ def get_active_listings(inputs: UserInputs) -> pd.DataFrame:
         (df["floor_area_sqm"] <= inputs.floor_area_sqm + 10)
     ]
 
-    # --- CLEAN COLUMNS ---
-    # align with your old schema
-    df = df.rename(columns={
-        "price/value": "asking_price"   # adjust if needed
-    })
 
-    # --- ADD REQUIRED FIELDS (so rest of pipeline doesn't break) ---
+      # ── REQUIRED FIELDS ───────────────────────
     df["listing_id"] = df.index.astype(str)
     df["listing_url"] = "#"
-    df["storey_range"] = df.get("storey_range", "N/A")
 
-    # fallback predicted price (you already compute real one elsewhere)
-    df["predicted_price"] = df["asking_price"]
+    # already exists in your dataset
+    df["recent_median_transacted"] = df["median_6m_similar"]
 
-    df["recent_median_transacted"] = df["asking_price"]
-
-    df["asking_vs_predicted_pct"] = 0
-
-    df["valuation_label"] = df.apply(classify_listing, axis=1)
+    # valuation already computed
+    df["asking_vs_predicted_pct"] = df["valuation_pct"]
 
     return df.copy()
