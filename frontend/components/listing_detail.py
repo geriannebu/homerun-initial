@@ -76,7 +76,7 @@ def show_listing_detail(listing_id: str):
     # ── Extract core data ────────────────────────────────────────────────
     asking = int(row["asking_price"])
     predicted = int(row["predicted_price"])
-    diff = float(row["asking_vs_predicted_pct"])
+    diff = float(row["valuation_pct"])
 
     town = row.get("town", "")
     flat_type = row.get("flat_type", "")

@@ -21,6 +21,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from backend.utils.constants import FLAT_TYPES, TOWNS, AMENITY_LABELS
+from backend.services.quiz import render_quiz, reset_quiz
 from backend.schemas.inputs import UserInputs
 
 try:
@@ -64,63 +65,6 @@ ACCENT_BORDER = "#FF4458"
 
 # ── Preferences / lifestyle quiz config ──────────────────────────────────────
 
-QUESTION_BANK = [
-    {
-        "id": "q1",
-        "text": "What makes your daily commute feel easiest?",
-        "options": [
-            {"id": "q1_a", "label": "A fast MRT connection", "amenity": "train"},
-            {"id": "q1_b", "label": "A bus stop very close to home", "amenity": "bus"},
-            {"id": "q1_c", "label": "I don’t mind either, as long as essentials are nearby", "amenity": "mall"},
-        ],
-    },
-    {
-        "id": "q2",
-        "text": "On most days, how do you usually handle meals?",
-        "options": [
-            {"id": "q2_a", "label": "I like affordable cooked food nearby", "amenity": "hawker"},
-            {"id": "q2_b", "label": "I usually buy food while running errands at a mall", "amenity": "mall"},
-            {"id": "q2_c", "label": "I prefer buying groceries and preparing food at home", "amenity": "supermarket"},
-        ],
-    },
-    {
-        "id": "q3",
-        "text": "On a busy weekday, which nearby option would help you the most?",
-        "options": [
-            {"id": "q3_a", "label": "MRT access", "amenity": "train"},
-            {"id": "q3_b", "label": "A one-stop place for errands and essentials", "amenity": "mall"},
-            {"id": "q3_c", "label": "A nearby clinic or polyclinic", "amenity": "polyclinic"},
-        ],
-    },
-    {
-        "id": "q4",
-        "text": "Which of these matters more for your household right now?",
-        "options": [
-            {"id": "q4_a", "label": "Good school access", "amenity": "primary_school"},
-            {"id": "q4_b", "label": "Healthcare nearby", "amenity": "polyclinic"},
-            {"id": "q4_c", "label": "Good public transport connectivity", "amenity": "train"},
-        ],
-    },
-    {
-        "id": "q5",
-        "text": "What sounds most like your usual weekend?",
-        "options": [
-            {"id": "q5_a", "label": "Eating around the neighbourhood and staying close to home", "amenity": "hawker"},
-            {"id": "q5_b", "label": "Shopping, errands, cafés, or mall time", "amenity": "mall"},
-            {"id": "q5_c", "label": "Family-oriented routines where nearby schools and amenities matter", "amenity": "primary_school"},
-        ],
-    },
-    {
-        "id": "q6",
-        "text": "If you had to prioritise one, which would you choose?",
-        "options": [
-            {"id": "q6_a", "label": "Being near MRT over having more food options", "amenity": "train"},
-            {"id": "q6_b", "label": "Having food options nearby over faster transport", "amenity": "hawker"},
-            {"id": "q6_c", "label": "Having everyday essentials in one place", "amenity": "mall"},
-        ],
-    },
-]
-
 AMENITY_KEY_MAP = {
     "train": "mrt",
     "bus": "bus",
@@ -133,6 +77,31 @@ AMENITY_KEY_MAP = {
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _init_state(ss) -> None:
+    defaults = {
+        "quiz_step":               "select",
+        "quiz_selected":           [],
+        "quiz_answers":            {},
+        "quiz_normalised_weights": {},
+        "quiz_ranking":            [],
+        "quiz_ties":               [],
+        "quiz_tiebreak":           {},
+        "quiz_final_ranking":      [],
+    }
+    for k, v in defaults.items():
+        if k not in ss:
+            ss[k] = v
+
+
+def reset_quiz() -> None:
+    """Call to wipe all quiz state and restart from Step 1."""
+    for key in [
+        "quiz_step", "quiz_selected", "quiz_answers",
+        "quiz_normalised_weights", "quiz_ranking",
+        "quiz_ties", "quiz_tiebreak", "quiz_final_ranking",
+    ]:
+        st.session_state.pop(key, None)
 
 def _progress_bar(step: int):
     pct = int((step / TOTAL_STEPS) * 100)
@@ -148,7 +117,7 @@ def _progress_bar(step: int):
         </div>
         """,
         unsafe_allow_html=True,
-    )
+    ) 
 
 
 def _step_label(step: int):
@@ -191,71 +160,6 @@ def _back_btn(key: str = "back"):
 
 def _default_amenity_order():
     return list(AMENITY_LABELS.keys())
-
-
-def _compute_lifestyle_boosts(answers: dict) -> dict:
-    boosts = {}
-    for ans in answers.values():
-        amenity = ans.get("amenity")
-        mapped = AMENITY_KEY_MAP.get(amenity)
-        if mapped:
-            boosts[mapped] = boosts.get(mapped, 0) + 1
-    return boosts
-
-
-def _compute_predicted_amenity_rank():
-    """
-    Convert priority mode + lifestyle boosts into a predicted amenity ranking.
-    """
-    boosts = st.session_state.get("lifestyle_boosts", {}) or {}
-    priority_mode = st.session_state.get("pref_priority_mode", "balanced")
-    base_order = _default_amenity_order()
-
-    base_scores = {
-        "mrt": 1.0,
-        "bus": 0.9,
-        "healthcare": 0.7,
-        "schools": 0.8,
-        "hawker": 0.85,
-        "retail": 0.75,
-    }
-
-    priority_boosts_map = {
-        "save_money": {
-            "hawker": 2.0,
-            "bus": 1.2,
-            "mrt": 0.8,
-            "retail": -0.3,
-        },
-        "convenience": {
-            "mrt": 2.0,
-            "retail": 1.6,
-            "bus": 1.2,
-            "healthcare": 0.8,
-        },
-        "balanced": {
-            "mrt": 1.0,
-            "hawker": 1.0,
-            "bus": 1.0,
-            "retail": 0.8,
-            "healthcare": 0.6,
-            "schools": 0.6,
-        },
-    }
-
-    priority_boosts = priority_boosts_map.get(priority_mode, {})
-
-    scored = []
-    for i, key in enumerate(base_order):
-        score = (
-            base_scores.get(key, 0.5)
-            + boosts.get(key, 0)
-            + priority_boosts.get(key, 0)
-        )
-        scored.append((key, score, -i))
-
-    ranked = [k for k, _, _ in sorted(scored, key=lambda x: (x[1], x[2]), reverse=True)]
-    return ranked
 
 
 def _move_item(rank, idx, direction):
@@ -792,133 +696,78 @@ def _render_priority_mode():
 def _render_lifestyle():
     _progress_bar(7)
     _step_label(7)
+    _heading(
+        "Your lifestyle",
+        "Answer a few quick questions so we can personalise your recommendations."
+    )
 
-    q_idx = st.session_state.get("lifestyle_q", 0)
-    answers = st.session_state.get("lifestyle_answers", {})
+    scoring_weights, final_ranking = render_quiz()
 
-    if q_idx < len(QUESTION_BANK):
-        q_conf = QUESTION_BANK[q_idx]
-        q_id = q_conf["id"]
-        q_text = q_conf["text"]
-        opts = q_conf["options"]
+    # ── Quiz still in progress ───────────────────────────────
+    if not final_ranking:
+        return  # stay on step 7
 
-        _heading("Your lifestyle", q_text)
+    # ── Quiz completed ───────────────────────────────────────
+    st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
 
-        dots_html = "<div style='display:flex;gap:6px;justify-content:center;margin-bottom:1.4rem;'>"
-        for i in range(len(QUESTION_BANK)):
-            if i < q_idx:
-                col = ACCENT
-                w = "16px"
-                r = "3px"
-            elif i == q_idx:
-                col = ACCENT
-                w = "24px"
-                r = "3px"
-            else:
-                col = "#e2e8f0"
-                w = "8px"
-                r = "50%"
-            dots_html += f"<div style='width:{w};height:8px;border-radius:{r};background:{col};transition:all 0.2s;'></div>"
-        dots_html += "</div>"
-        st.markdown(dots_html, unsafe_allow_html=True)
+    st.success("Preferences captured ✓")
 
-        for i, opt in enumerate(opts):
-            if st.button(opt["label"], key=f"ls_q{q_idx}_{i}", use_container_width=True):
-                answers[q_id] = {
-                    "option_id": opt["id"],
-                    "label": opt["label"],
-                    "amenity": opt["amenity"],
-                }
-                st.session_state["lifestyle_answers"] = answers
-                st.session_state["lifestyle_q"] = q_idx + 1
-                st.session_state["lifestyle_boosts"] = _compute_lifestyle_boosts(answers)
-                st.rerun()
+    if _next_btn("See my predicted priorities →", key="lifestyle_next"):
+        # Store results into onboarding state
+        st.session_state["pref_amenity_rank"] = final_ranking
+        st.session_state["pref_amenity_weights"] = scoring_weights
 
-        if q_idx > 0:
-            st.markdown("<div style='height:0.8rem'></div>", unsafe_allow_html=True)
-            if st.button("← Previous question", key=f"ls_back_{q_idx}"):
-                prev_q_id = QUESTION_BANK[q_idx - 1]["id"]
-                answers.pop(prev_q_id, None)
-                st.session_state["lifestyle_answers"] = answers
-                st.session_state["lifestyle_q"] = q_idx - 1
-                st.session_state["lifestyle_boosts"] = _compute_lifestyle_boosts(answers)
-                st.rerun()
-
-    else:
-        _heading(
-            "Preferences captured ✓",
-            "We’ve predicted your amenity priorities. You can reorder them in the next step."
-        )
-
-        boosts = st.session_state.get("lifestyle_boosts", {})
-        if boosts:
-            top = sorted(boosts.items(), key=lambda x: -x[1])
-            summary_parts = []
-            for k, _ in top[:3]:
-                summary_parts.append(f"{AMENITY_ICONS.get(k, '')} {AMENITY_LABELS.get(k, k)}")
-
-            st.markdown(
-                f"<p style='font-size:0.88rem;color:#64748b;text-align:center;"
-                f"margin-bottom:1.4rem;'>Predicted from your answers: "
-                f"<strong style='color:#0b132d;'>{' · '.join(summary_parts)}</strong></p>",
-                unsafe_allow_html=True,
-            )
-
-        if _next_btn("See my predicted priorities →", key="lifestyle_next"):
-            predicted = _compute_predicted_amenity_rank()
-            st.session_state["predicted_amenity_rank"] = predicted
-            st.session_state["pref_amenity_rank"] = predicted[:]
-            st.session_state["lifestyle_q"] = 0
-            st.session_state.onboarding_step = 8
-            st.rerun()
+        # Move to next step
+        st.session_state.onboarding_step = 8
+        st.rerun()
 
     _back_btn("lifestyle_step_back")
 
 
 # ── Step 8: Predicted amenity ranking ────────────────────────────────────────
-
 def _render_predicted_amenity_ranking():
     _progress_bar(8)
     _step_label(8)
     _heading(
-        "What matters most to you?",
-        "We’ve predicted your amenity priorities based on your lifestyle. Reorder them if needed."
+        "Your predicted priorities",
+        "We've inferred what matters most to you. You can tweak the order if needed."
     )
 
-    if "predicted_amenity_rank" not in st.session_state:
-        predicted = _compute_predicted_amenity_rank()
-        st.session_state["predicted_amenity_rank"] = predicted
-        st.session_state["pref_amenity_rank"] = predicted[:]
+    # Get ranking from quiz
+    rank = st.session_state.get("pref_amenity_rank")
 
-    rank = st.session_state.get("pref_amenity_rank") or st.session_state["predicted_amenity_rank"]
+    # Fallback safety (shouldn't happen, but good practice)
+    if not rank:
+        rank = _default_amenity_order()
+        st.session_state.pref_amenity_rank = rank
 
-    st.markdown(
-        "<div style='padding:12px 14px;background:#fff5f6;border:1px solid #ffd4db;border-radius:12px;"
-        "margin-bottom:1rem;font-size:0.88rem;color:#7f1d1d;'>"
-        "Tip: we’ve pre-filled this for the user, so they only need to adjust it if it feels off."
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
+    # ── Display reorder UI ─────────────────────────────
     if HAS_SORTABLES:
         _render_rank_list_sortable(rank)
     else:
         _render_rank_list_with_buttons(rank)
 
-    st.markdown("<div style='height:0.8rem'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:1.2rem'></div>", unsafe_allow_html=True)
 
-    cols = st.columns([1, 1])
-    with cols[0]:
-        if st.button("Reset to predicted order", key="amenity_reset", use_container_width=True):
-            st.session_state.pref_amenity_rank = st.session_state["predicted_amenity_rank"][:]
-            st.rerun()
-    with cols[1]:
-        if st.button("Continue →", key="amenity_next", type="primary", use_container_width=True):
-            st.session_state.onboarding_step = 9
-            st.rerun()
+    # ── Continue button ────────────────────────────────
+    if _next_btn("Looks good →", key="amenity_rank_next"):
+        # Recompute weights from FINAL order
+        final_rank = st.session_state.get("pref_amenity_rank")
 
-    _back_btn("amenity_back")
+        n = len(final_rank)
+        raw_weights = {k: (n - i) for i, k in enumerate(final_rank)}
+        total = sum(raw_weights.values())
 
+        weights = {k: v / total for k, v in raw_weights.items()}
+
+        # Save back to session
+        st.session_state["pref_amenity_weights"] = weights
+
+        # Move to next step
+        st.session_state.onboarding_step = 9
+        st.rerun()
+
+    _back_btn("amenity_rank_back")
 
 # ── Step 9: Done / trigger search ────────────────────────────────────────────
 

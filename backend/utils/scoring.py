@@ -140,3 +140,26 @@ def sync_shortlist_options(valid_ids):
         x for x in st.session_state.selected_shortlist_for_compare
         if x in valid_ids
     ]
+
+# Quiz scoring 
+
+QUIZ_SCORE_BASE = 0.25
+
+def compute_normalised_weights(selected, answers):
+    scores = {a: QUIZ_SCORE_BASE for a in selected}
+    for amenity in answers.values():
+        if amenity and amenity in scores:
+            scores[amenity] += 1.0
+
+    total = sum(scores.values())
+    if total == 0:
+        n = len(selected)
+        return {a: round(1 / n, 4) for a in selected}
+
+    return {a: round(v / total, 4) for a, v in scores.items()}
+
+
+def rank_sum_weights(ranking):
+    n = len(ranking)
+    denom = n * (n + 1) / 2
+    return {a: round((n - i) / denom, 6) for i, a in enumerate(ranking)}

@@ -155,8 +155,9 @@ def render_listing_tab(listings_df: pd.DataFrame):
     session_id = session["session_id"]
 
     # ── Swipe deck iframe ─────────────────────────────────────────
-    html = _build_swipe_html(cards_json)
+    html = _build_swipe_html(cards_json, session["session_id"])
     components.html(html, height=720, scrolling=False)
+    
 
     # ── Top card info ─────────────────────────────────────────────
     top_card = cards[0] if cards else None
@@ -294,51 +295,116 @@ def _render_deck_done(session: dict, listings_df: pd.DataFrame):
 
 
 # ───────────────────────── Swipe Deck HTML ────────────────────────────
-def _build_swipe_html(cards_json: str) -> str:
-    """Swipe deck: displays all cards stacked for demo, with card info."""
-    return f"""
+def _build_swipe_html(cards_json: str, session_id: str) -> str:
+    """
+    Returns HTML string for a swipeable card deck.
+    All JS template literals are preserved; Python does not try to evaluate offsetX/offsetY.
+    """
+    return """
     <html>
     <head>
     <style>
-    body {{
-        font-family: sans-serif; margin:0; padding:0;
-        background: #f1f5f9; display:flex; justify-content:center;
-        height: 700px;
-    }}
-    #deck {{
-        width: 320px; height: 660px; position: relative; perspective: 1000px;
-    }}
-    .card {{
-        width: 300px; height: 420px; border-radius: 12px;
-        background: #fff; box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-        position: absolute; top: 20px; left: 10px;
-        display: flex; flex-direction: column; justify-content: space-between;
-        padding: 16px; transition: all 0.3s ease;
-        overflow-wrap: break-word;
-    }}
-    .card h4 {{ margin: 0 0 4px 0; font-size: 1.1rem; }}
-    .card p {{ margin: 2px 0; font-size: 0.8rem; color:#334155; }}
+    body { font-family: 'Segoe UI', sans-serif; margin:0; padding:0; background:#f1f5f9;
+           display:flex; justify-content:center; align-items:center; height:100vh; }
+    #deck { width:360px; height:650px; position:relative; perspective:1000px; }
+    .card { width:340px; height:460px; border-radius:16px; background:#fff;
+            box-shadow:0 8px 20px rgba(0,0,0,0.25); position:absolute; top:20px; left:10px;
+            display:flex; flex-direction:column; justify-content:space-between; padding:16px;
+            overflow-wrap: break-word; transition: transform 0.3s ease, opacity 0.3s ease; cursor:grab; }
+    .card h4 { margin:0 0 4px 0; font-size:1.1rem; font-weight:700; color:#1e293b; }
+    .card p { margin:2px 0; font-size:0.8rem; color:#334155; }
+    .val-label { font-weight:700; padding:2px 6px; border-radius:6px; font-size:0.75rem;
+                 color:#fff; display:inline-block; margin-top:4px; }
     </style>
     </head>
     <body>
     <div id="deck"></div>
     <script>
-    const cards = {cards_json};
+    const cardsData = """ + cards_json + """;
     const deck = document.getElementById('deck');
+    let topIndex = 0;
 
-    cards.forEach((c,i) => {{
+    function createCard(c) {
         const card = document.createElement('div');
         card.className = 'card';
-        card.style.zIndex = cards.length - i;
+        card.style.zIndex = cardsData.length - topIndex;
+        const valColor = c.label_color || '#2563eb';
         card.innerHTML = `
-            <h4>${{c.town}} · ${{c.flat_type}}</h4>
-            <p>Area: ${{c.area}} sqm · Storey: ${{c.storey}}</p>
-            <p>Asking: ${{c.asking.toLocaleString()}} SGD · Predicted: ${{c.predicted.toLocaleString()}} SGD</p>
-            <p><strong>${{c.label}}</strong> · ${{c.diff_pct}}% vs model</p>
-            <p>${{c.why}}</p>
+            <h4>${c.town} · ${c.flat_type}</h4>
+            <p style="font-weight:600; font-size:0.9rem;">${c.address || 'No address'}</p>
+            <p>Area: ${c.area} sqm · Storey: ${c.storey}</p>
+            <p>Asking: ${c.asking.toLocaleString()} SGD · Predicted: ${c.predicted.toLocaleString()} SGD</p>
+            <p class="val-label" style="background:${valColor}">${c.label}</p>
+            <p>${c.diff_pct >=0? '+' : ''}${c.diff_pct}% vs model</p>
+            <p style="margin-top:8px; font-size:0.78rem; color:#475569;">${c.why}</p>
         `;
-        deck.appendChild(card);
-    }});
+        return card;
+    }
+
+    function renderDeck() {
+        deck.innerHTML = '';
+        cardsData.slice(topIndex).forEach(c => {
+            const card = createCard(c);
+            deck.appendChild(card);
+            makeSwipeable(card, c.id);
+        });
+    }
+
+    function makeSwipeable(card, cardId) {
+        let offsetX = 0;
+        let offsetY = 0;
+        let startX = 0;
+        let startY = 0;
+        let isDragging = false;
+
+        card.addEventListener('pointerdown', e => {
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            card.setPointerCapture(e.pointerId);
+        });
+
+        card.addEventListener('pointermove', e => {
+            if (!isDragging) return;
+            offsetX = e.clientX - startX;
+            offsetY = e.clientY - startY;
+            card.style.transform = `translate(${offsetX}px, ${offsetY}px) rotate(${offsetX/15}deg)`;
+        });
+
+        card.addEventListener('pointerup', e => {
+            isDragging = false;
+            let direction = null;
+            if (Math.abs(offsetX) > 120 || Math.abs(offsetY) > 150) {
+                if (Math.abs(offsetY) > Math.abs(offsetX) && offsetY < -150) {
+                    direction = 'up';       // super-swipe
+                } else if (offsetX > 120) {
+                    direction = 'right';    // save
+                } else {
+                    direction = 'left';     // pass
+                }
+
+                card.style.transition = 'transform 0.5s ease, opacity 0.5s ease';
+                card.style.opacity = 0;
+                card.style.transform = `translate(${offsetX*3}px, ${offsetY*3}px) rotate(${offsetX*10}deg)`;
+
+                if (direction) {
+                    const swipeEvent = {
+                        session_id: '""" + session_id + """',
+                        card_id: cardId,
+                        direction: direction
+                    };
+                    window.parent.postMessage({type:'swipe', data: swipeEvent}, "*");
+                }
+                topIndex += 1;
+                setTimeout(renderDeck, 300);
+            } else {
+                card.style.transition = 'transform 0.3s ease';
+                card.style.transform = 'translate(0,0) rotate(0)';
+            }
+        });
+    }
+
+    renderDeck();
     </script>
     </body>
     </html>
