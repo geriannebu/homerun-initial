@@ -28,7 +28,7 @@ def get_prediction_bundle(inputs: UserInputs, ranking_profile: str = "balanced")
 
     # ── Filter by user inputs ─────────────────────────
     if getattr(inputs, "town", None):
-        listings_df = listings_df[listings_df["planning_area"] == inputs.town]
+        listings_df = listings_df[listings_df["town"] == inputs.town]
     if getattr(inputs, "flat_type", None):
         listings_df = listings_df[listings_df["flat_type"] == inputs.flat_type]
     if getattr(inputs, "floor_area_sqm", None):

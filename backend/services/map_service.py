@@ -23,7 +23,7 @@ def mock_anchor_points(inputs: UserInputs):
 
 def mock_amenities_for_town(towns):
     rows = []
-    amenity_types = ["mrt", "bus", "healthcare", "schools", "hawker", "retail"]
+    amenity_types = ["train", "bus", "polyclinic", "primary_school", "hawker", "mall", "supermarket"]
 
     for town in towns:
         base_lat, base_lon = latlon_from_town(town)

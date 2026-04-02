@@ -1,50 +1,64 @@
+# ---------------------------------------------------------------------------
+# Towns & Flat Types
+# ---------------------------------------------------------------------------
 TOWNS = [
-    "Ang Mo Kio",
-    "Bedok",
-    "Bishan",
-    "Bukit Batok",
-    "Bukit Merah",
-    "Choa Chu Kang",
-    "Clementi",
-    "Hougang",
-    "Jurong West",
-    "Kallang/Whampoa",
-    "Pasir Ris",
-    "Queenstown",
-    "Sembawang",
-    "Sengkang",
-    "Tampines",
-    "Toa Payoh",
-    "Woodlands",
-    "Yishun",
+    "Ang Mo Kio", "Bedok", "Bishan", "Bukit Batok", "Bukit Merah",
+    "Choa Chu Kang", "Clementi", "Hougang", "Jurong West",
+    "Kallang/Whampoa", "Pasir Ris", "Queenstown", "Sembawang",
+    "Sengkang", "Tampines", "Toa Payoh", "Woodlands", "Yishun",
 ]
 
 FLAT_TYPES = ["2 ROOM", "3 ROOM", "4 ROOM", "5 ROOM", "EXECUTIVE"]
 
+# ---------------------------------------------------------------------------
+# School Options
+# ---------------------------------------------------------------------------
 SCHOOL_OPTIONS = ["Any", "Primary schools", "Secondary schools", "Both"]
 
+# ---------------------------------------------------------------------------
+# Amenity Labels
+# ---------------------------------------------------------------------------
 AMENITY_LABELS = {
-    "mrt": "MRT stations",
+    "train": "MRT stations",
     "bus": "Bus stops",
-    "healthcare": "Hospitals / polyclinics",
-    "schools": "Schools",
+    "polyclinic": "Hospitals / polyclinics",
+    "primary_school": "Schools",
     "hawker": "Hawker centres",
-    "retail": "Shopping malls",
+    "mall": "Shopping malls",
+    "supermarket": "Supermarkets",
 }
 
+# ---------------------------------------------------------------------------
+# Amenity Colors (RGBA)
+# ---------------------------------------------------------------------------
 AMENITY_COLORS = {
     "town": [31, 119, 180, 180],
     "anchor": [148, 103, 189, 220],
-    "mrt": [214, 39, 40, 160],
+    "train": [214, 39, 40, 160],
     "bus": [255, 127, 14, 140],
-    "healthcare": [44, 160, 44, 150],
-    "schools": [23, 190, 207, 150],
+    "healthcare": [44, 160, 44, 150],      # polyclinics
+    "schools": [23, 190, 207, 150],        # primary schools
     "hawker": [140, 86, 75, 150],
-    "retail": [227, 119, 194, 150],
+    "retail": [227, 119, 194, 150],        # malls
+    "supermarket": [255, 215, 0, 150],     # supermarkets
 }
 
-AMENITY_KEYS = ["mrt", "bus", "schools", "hawker", "retail", "healthcare"]
+# ---------------------------------------------------------------------------
+# Amenity Keys (for scoring / iteration)
+# ---------------------------------------------------------------------------
+AMENITY_KEYS = [
+    "train",
+    "bus",
+    "primary_school",
+    "hawker",
+    "mall",
+    "polyclinic",
+    "supermarket",
+]
 
+# ---------------------------------------------------------------------------
+# Town Coordinates
+# ---------------------------------------------------------------------------
 TOWN_COORDS = {
     "Ang Mo Kio": (1.3691, 103.8454),
     "Bedok": (1.3236, 103.9273),
@@ -64,4 +78,17 @@ TOWN_COORDS = {
     "Toa Payoh": (1.3343, 103.8563),
     "Woodlands": (1.4360, 103.7865),
     "Yishun": (1.4294, 103.8354),
+}
+
+# ---------------------------------------------------------------------------
+# Amenity Mapping (to column prefixes / scoring)
+# ---------------------------------------------------------------------------
+AMENITY_MAPPING = {
+    "train":          "train",          # walk_train_min1, walk_train_avg_mins
+    "bus":            "bus",            # walk_bus_min1, walk_bus_avg_mins
+    "polyclinic":     "polyclinic",     # walk_polyclinic_min1, walk_polyclinic_avg_mins
+    "primary_school": "primary_school", # walk_primary_school_min1, walk_primary_school_avg_mins
+    "hawker":         "hawker",         # walk_hawker_min1, walk_hawker_avg_mins
+    "mall":           "mall",           # walk_mall_min1, walk_mall_avg_mins
+    "supermarket":    "supermarket",    # walk_supermarket_min1, walk_supermarket_avg_mins
 }

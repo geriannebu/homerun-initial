@@ -32,18 +32,9 @@ Usage
 
 from __future__ import annotations
 import streamlit as st
+from backend.utils.constants import AMENITY_LABELS
 
 # ── Constants ──────────────────────────────────────────────────────────────────
-
-AMENITY_LABELS: dict[str, str] = {
-    "train":          "MRT / Train",
-    "bus":            "Bus Stop",
-    "hawker":         "Hawker Centre",
-    "mall":           "Shopping Mall",
-    "supermarket":    "Supermarket",
-    "polyclinic":     "Polyclinic",
-    "primary_school": "Primary School",
-}
 
 QUESTION_BANK = [
     {

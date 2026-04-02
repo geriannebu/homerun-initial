@@ -14,7 +14,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from backend.utils.formatters import fmt_sgd, valuation_tag_html
-from backend.utils.constants import TOWN_COORDS
+from backend.utils.constants import TOWN_COORDS, AMENITY_LABELS
 from frontend.state.session import get_active_session, record_swipe
 from frontend.components.listing_detail import show_listing_detail
 
@@ -27,15 +27,6 @@ AMENITY_ICONS = {
     "schools": "🏫",
     "hawker": "🍜",
     "retail": "🛍️",
-}
-
-AMENITY_LABELS = {
-    "mrt": "MRT",
-    "bus": "Bus",
-    "healthcare": "Health",
-    "schools": "Schools",
-    "hawker": "Hawker",
-    "retail": "Shops",
 }
 
 

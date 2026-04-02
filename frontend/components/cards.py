@@ -3,7 +3,7 @@ import streamlit as st
 
 from backend.schemas.inputs import UserInputs
 from backend.utils.formatters import fmt_sgd
-from backend.utils.scoring import compute_listing_scores
+from backend.utils.constants import AMENITY_LABELS
 
 
 # ---------------------------------------------------------------------------
@@ -60,8 +60,11 @@ def render_homerun_pick(inputs: UserInputs, bundle: Dict[str,Any]):
         "mrt":1, "bus":1, "schools":1, "hawker":1, "retail":1, "healthcare":1
     }
 
-    ranked = compute_listing_scores(bundle["listings_df"], inputs.budget, amenity_weights)
-    top = ranked.sort_values("overall_value_score", ascending=False).iloc[0]
+    if bundle["top"].empty:
+        st.info("No listings available to pick from.")
+        return
+
+    top = bundle["top"].iloc[0]  # Already scored and ranked in recommender.py
 
     st.markdown("### 🏆 HomeRun Pick Right Now")
     st.write(f"**Listing ID:** {top['listing_id']}")
@@ -74,27 +77,24 @@ def render_homerun_pick(inputs: UserInputs, bundle: Dict[str,Any]):
     st.write(f"**Overall Score:** {top['overall_value_score']:.1f}/100")
 
     st.write("**Amenities Nearby:**")
-    for amen in ["mrt", "bus", "schools", "hawker", "retail", "healthcare"]:
-        score_col = f"{amen}_score"
-        dist_col = {
-            "mrt": "train_1_dist_m",
-            "bus": "bus_1_dist_m",
-            "schools": "school_1_dist_m",
-            "hawker": "hawker_1_dist_m",
-            "retail": "mall_1_dist_m",
-            "healthcare": "polyclinic_1_dist_m",
-        }[amen]
+    amenity_keys = ["train", "bus", "primary_school", "hawker", "mall", "polyclinic"]
+
+    for amen in amenity_keys:
+        score_col = f"walk_acc_{amen}"      # from stage3_score in recommender.py
+        dist_col  = f"walk_{amen}_avg_mins" # display avg walking time
 
         distance = top.get(dist_col, None)
-        score = top.get(score_col, None)
+        score    = top.get(score_col, None)
         if distance is not None and score is not None:
-            if score >= 85:
+            if score >= 0.8:
                 closeness = "Very close"
-            elif score >= 70:
+            elif score >= 0.6:
                 closeness = "Close"
-            elif score >= 50:
+            elif score >= 0.4:
                 closeness = "Moderate"
             else:
                 closeness = "Far"
 
-            st.write(f"• {amen.capitalize()}: {closeness} ({int(distance)} m, score: {score})")
+            st.write(f"• {AMENITY_LABELS[amen]}: {closeness} ({distance:.0f} min walk, score: {score:.2f})")
+
+        

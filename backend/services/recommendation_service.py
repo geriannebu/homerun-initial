@@ -6,38 +6,17 @@ from backend.services.recommender import run_recommender
 from backend.utils.constants import AMENITY_KEYS
 
 # ── Amenity scoring helper ─────────────────────────────────────────────────────
-def _distance_score(dist: float) -> float:
-    """Convert distance in meters to a 0..100 score."""
-    if pd.isna(dist):
-        return 40
-    if dist <= 300:
-        return 90
-    elif dist <= 600:
-        return 75
-    elif dist <= 1000:
-        return 60
-    else:
-        return 40
-
 def compute_amenity_scores(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Compute listing-level amenity scores for legacy display purposes.
-    Returns df with amenity_avg column.
-    """
-    mapping = {
-        "mrt": "train_1_dist_m",
-        "bus": "bus_1_dist_m",
-        "schools": "school_1_dist_m",
-        "hawker": "hawker_1_dist_m",
-        "retail": "mall_1_dist_m",
-        "healthcare": "polyclinic_1_dist_m",
-    }
-    for amen, col in mapping.items():
+    for amen in AMENITY_KEYS:
+        col = f"walk_{amen}_avg_mins"
         if col in df.columns:
-            df[f"{amen}_score"] = df[col].apply(_distance_score)
+            df[f"{amen}_score"] = df[col].apply(
+                lambda x: 100 * np.exp(-x / 8) if pd.notna(x) else 40
+            )
         else:
-            df[f"{amen}_score"] = 50  # fallback if missing
-    df["amenity_avg"] = df[[f"{amen}_score" for amen in AMENITY_KEYS]].mean(axis=1)
+            df[f"{amen}_score"] = 40
+
+    df["amenity_avg"] = df[[f"{a}_score" for a in AMENITY_KEYS]].mean(axis=1)
     return df
 
 # ── Town-level recommendations ────────────────────────────────────────────────

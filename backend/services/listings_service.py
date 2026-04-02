@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 
 from backend.utils.constants import TOWNS
-from backend.utils.scoring import classify_listing
 from backend.schemas.inputs import UserInputs
 
 from data.load_data import load_all_data

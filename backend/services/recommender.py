@@ -49,6 +49,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from backend.utils.constants import AMENITY_MAPPING
 
 log = logging.getLogger(__name__)
 
@@ -117,23 +118,33 @@ def _amenity_score(
         amenity_score    : float 0..1
         per_amenity_acc  : {amenity: exp_decay_score}  — for display
     """
-    per_acc: dict[str, float] = {}
+    per_acc = {}
+
     for amenity in amenity_ranking:
-        times = [listing.get(f"walk_{amenity}_min{n}") for n in range(1, 4)]
+        col_key = AMENITY_MAPPING.get(amenity, amenity)
+
+        times = [
+            listing.get(f"walk_{col_key}_min{n}")
+            for n in range(1, 4)
+        ]
+
         times = [
             t for t in times
             if t is not None and not (isinstance(t, float) and math.isnan(t))
         ]
+
         if not times:
-            avg = listing.get(f"walk_{amenity}_avg_mins")
+            avg = listing.get(f"walk_{col_key}_avg_mins")
             if avg is not None and not (isinstance(avg, float) and math.isnan(avg)):
                 times = [avg]
+
         per_acc[amenity] = _avg_exp_decay(times, tau)
 
     score = sum(
         scoring_weights.get(a, 0.0) * per_acc.get(a, 0.0)
         for a in amenity_ranking
     )
+
     return round(score, 4), {a: round(v, 4) for a, v in per_acc.items()}
 
 
@@ -184,7 +195,7 @@ def stage1_filter(
         df = df[df["bedrooms"].isin(rooms)]
     if preferred_towns:
         towns_upper = [t.upper().strip() for t in preferred_towns]
-        df = df[df["planning_area"].str.upper().isin(towns_upper)]
+        df = df[df["town"].str.upper().isin(towns_upper)]
     return df.reset_index(drop=True)
 
 
@@ -229,7 +240,7 @@ def stage3_score(
 
         record = {
             "address":         listing.get("full_address", ""),
-            "town":            listing.get("planning_area", ""),
+            "town":            listing.get("town", ""),
             "bedrooms":        listing.get("bedrooms", ""),
             "floor_area_sqft": listing.get("floor_area_sqft", ""),
             "asking_price":    listing.get("asking_price", 0),
