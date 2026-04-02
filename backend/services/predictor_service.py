@@ -4,7 +4,6 @@ from data.load_data import load_all_data
 from backend.schemas.inputs import UserInputs
 from backend.services.recommender import run_recommender, load_listings
 from backend.services.recommendation_service import recommend_towns_real
-from backend.services.quiz import render_quiz, rank_sum_weights
 
 # Default amenity weights (fallback)
 DEFAULT_AMENITY_WEIGHTS = {
@@ -41,13 +40,11 @@ def get_prediction_bundle(inputs: UserInputs, ranking_profile: str = "balanced")
     if "listing_id" not in listings_df.columns:
         listings_df["listing_id"] = listings_df.index.astype(str)
 
-    # ── Generate quiz-based ranking & weights ─────────
-    # This comes from your quiz.py logic
-    scoring_weights, final_ranking = render_quiz()
-    amenity_ranking = final_ranking
-    amenity_weights = scoring_weights
+    # ── Use ranking & weights already collected during onboarding ─────────
+    amenity_ranking = getattr(inputs, "amenity_rank", None) or list(DEFAULT_AMENITY_WEIGHTS.keys())
+    amenity_weights = getattr(inputs, "amenity_weights", None) or DEFAULT_AMENITY_WEIGHTS
 
-    # ── Compute listing-level scores using recommender.py ─
+    # ── Compute listing-level scores using recommender.py ─────────────────
     rec_results = run_recommender(
         listings_df=listings_df,
         amenity_ranking=amenity_ranking,
@@ -57,9 +54,9 @@ def get_prediction_bundle(inputs: UserInputs, ranking_profile: str = "balanced")
         rooms=[],  # can expand later
         preferred_towns=[inputs.town] if getattr(inputs, "town", None) else [],
         min_sqft=0,
-        top_n=15
+        top_n=15,
     )
-    scored_listings = rec_results["filtered"]  # filtered listings with scoring
+    scored_listings = rec_results["filtered"]
 
     # ── Summary stats ────────────────────────────────
     viable_count = len(scored_listings)
@@ -69,7 +66,7 @@ def get_prediction_bundle(inputs: UserInputs, ranking_profile: str = "balanced")
     confidence_low = round(predicted_price * 0.96)
     confidence_high = round(predicted_price * 1.04)
 
-    # ── Town recommendations if no specific town selected ─
+    # ── Town recommendations if no specific town selected ────────────────
     recommendations_df = None
     if not getattr(inputs, "town", None):
         recommendations_df = recommend_towns_real(
@@ -77,7 +74,7 @@ def get_prediction_bundle(inputs: UserInputs, ranking_profile: str = "balanced")
             df=listings_df,
             amenity_ranking=amenity_ranking,
             amenity_weights=amenity_weights,
-            top_n=5
+            top_n=5,
         )
 
     # ── Filter report for frontend ─────────────────────

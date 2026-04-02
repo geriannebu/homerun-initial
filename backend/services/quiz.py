@@ -1,39 +1,5 @@
-"""
-quiz.py
-=======
-Streamlit quiz component for the HDB Flat Recommender.
-
-Returns two things the rest of the app needs:
-    scoring_weights  — rank-sum weights from the final confirmed ranking
-                       (used for amenity_score calculation in recommender.py)
-    final_ranking    — ordered list of amenity keys, most → least important
-
-Flow
-----
-    Step 1  Amenity multi-select checkboxes
-    Step 2  Up to 4 filtered quiz questions (radio buttons)
-            → normalised_quiz_weights  (used ONLY to suggest ranking order)
-    Step 3  Tie-break sliders  (only shown if two amenities scored within TIE_THRESHOLD)
-    Step 4  User confirms / adjusts the ranking via selectboxes
-    Step 5  rank_sum_weights(final_ranking)  → scoring_weights shown + returned
-
-Usage
------
-    from backend.quiz import render_quiz, reset_quiz
-
-    scoring_weights, final_ranking = render_quiz()
-
-    if not scoring_weights:
-        st.stop()   # quiz not done yet — wait for user
-
-    # scoring_weights → e.g. {"train": 0.5, "hawker": 0.333, "bus": 0.167}
-    # final_ranking   → e.g. ["train", "hawker", "bus"]
-"""
-
 from __future__ import annotations
 import streamlit as st
-
-# ── Constants ──────────────────────────────────────────────────────────────────
 
 AMENITY_LABELS: dict[str, str] = {
     "train":          "MRT / Train",
@@ -102,18 +68,12 @@ QUESTION_BANK = [
     },
 ]
 
-NO_PREF_LABEL   = "No preference"
-TIE_THRESHOLD   = 0.001   # quiz weights within this gap → treated as tied
-QUIZ_SCORE_BASE = 0.25    # baseline score added to every selected amenity
+NO_PREF_LABEL = "No preference"
+TIE_THRESHOLD = 0.001
+QUIZ_SCORE_BASE = 0.25
 
-
-# ── Pure logic helpers (no Streamlit) ─────────────────────────────────────────
 
 def _build_active_questions(selected: list[str]) -> list[dict]:
-    """
-    Filter QUESTION_BANK to questions with ≥2 options whose amenity was selected.
-    Append 'No preference' option to every kept question. Return at most 4.
-    """
     sel, active = set(selected), []
     for q in QUESTION_BANK:
         valid = [o for o in q["options"] if o["amenity"] in sel]
@@ -129,38 +89,21 @@ def _compute_normalised_weights(
     selected: list[str],
     answers: dict[str, str | None],
 ) -> dict[str, float]:
-    """
-    Quiz scoring:
-        baseline +0.25 per selected amenity
-        +1.0 per answer that maps to that amenity
-        'No preference' adds 0
-    Normalise so scores sum to 1.
-    Result used ONLY to suggest ranking order — not for final scoring.
-    """
     scores = {a: QUIZ_SCORE_BASE for a in selected}
     for amenity in answers.values():
         if amenity and amenity in scores:
             scores[amenity] += 1.0
+
     total = sum(scores.values())
     if total == 0:
         n = len(selected)
         return {a: round(1 / n, 4) for a in selected}
+
     return {a: round(v / total, 4) for a, v in scores.items()}
 
 
 def rank_sum_weights(ranking: list[str]) -> dict[str, float]:
-    """
-    Convert an ordered amenity list → Rank-Sum weights that sum to 1.
-    These are the weights used for computing amenity_score during scoring.
-
-    Formula: weight(rank i) = (n - i + 1) / sum(1..n)
-
-    Example — ['train', 'hawker', 'bus']  (n=3, denom=6):
-        train  rank 1  →  3/6 = 0.5000
-        hawker rank 2  →  2/6 = 0.3333
-        bus    rank 3  →  1/6 = 0.1667
-    """
-    n     = len(ranking)
+    n = len(ranking)
     denom = n * (n + 1) / 2
     return {a: round((n - i) / denom, 6) for i, a in enumerate(ranking)}
 
@@ -169,7 +112,6 @@ def _find_ties(
     ranking: list[str],
     weights: dict[str, float],
 ) -> list[tuple[str, str]]:
-    """Return adjacent pairs in ranking whose quiz weights are within TIE_THRESHOLD."""
     ties = []
     for i in range(len(ranking) - 1):
         a1, a2 = ranking[i], ranking[i + 1]
@@ -178,46 +120,34 @@ def _find_ties(
     return ties
 
 
-# ── Session state initialiser ──────────────────────────────────────────────────
-
 def _init_state(ss) -> None:
     defaults = {
-        "quiz_step":               "select",
-        "quiz_selected":           [],
-        "quiz_answers":            {},
+        "quiz_step": "select",
+        "quiz_selected": [],
+        "quiz_answers": {},
         "quiz_normalised_weights": {},
-        "quiz_ranking":            [],
-        "quiz_ties":               [],
-        "quiz_tiebreak":           {},
-        "quiz_final_ranking":      [],
+        "quiz_ranking": [],
+        "quiz_ties": [],
+        "quiz_tiebreak": {},
+        "quiz_final_ranking": [],
     }
     for k, v in defaults.items():
         if k not in ss:
             ss[k] = v
 
 
-# ── Main Streamlit component ───────────────────────────────────────────────────
-
-def render_quiz() -> tuple[dict[str, float], list[str]]:
+def render_quiz() -> tuple[dict[str, float], list[str], dict[str, float]]:
     """
-    Render the full multi-step quiz UI in Streamlit.
-
-    Returns
-    -------
-    (scoring_weights, final_ranking)
-        scoring_weights : rank-sum weights by amenity key, sums to 1.0
-                          pass to run_recommender(amenity_weights=scoring_weights)
-        final_ranking   : amenity keys ordered most → least important
-                          pass to run_recommender(amenity_ranking=final_ranking)
-
-    Returns ({}, []) while still in progress.
+    Returns:
+        scoring_weights    final rank-sum weights
+        final_ranking      ordered amenity keys
+        normalised_weights quiz-derived weights for transparency display
     """
     ss = st.session_state
     _init_state(ss)
 
-    # ── Step 1: Amenity selection ──────────────────────────────────────────────
     if ss.quiz_step == "select":
-        st.subheader("Step 1 — What amenities matter to you?")
+        st.markdown("**Step 1 — What amenities matter to you?**")
         st.caption("Select everything you care about. We'll personalise the quiz to match.")
 
         chosen = []
@@ -230,13 +160,10 @@ def render_quiz() -> tuple[dict[str, float], list[str]]:
         st.button(
             "Next →",
             disabled=len(chosen) < 1,
-            on_click=lambda: (
-                ss.update({"quiz_selected": chosen, "quiz_step": "quiz"})
-            ),
+            on_click=lambda: ss.update({"quiz_selected": chosen, "quiz_step": "quiz"}),
         )
-        return {}, []
+        return {}, [], {}
 
-    # ── Step 2: Quiz questions ─────────────────────────────────────────────────
     if ss.quiz_step == "quiz":
         questions = _build_active_questions(ss.quiz_selected)
 
@@ -244,24 +171,25 @@ def render_quiz() -> tuple[dict[str, float], list[str]]:
             weights = _compute_normalised_weights(ss.quiz_selected, {})
             ranking = sorted(weights, key=lambda a: weights[a], reverse=True)
             ss.quiz_normalised_weights = weights
-            ss.quiz_ranking            = ranking
-            ss.quiz_ties               = []
-            ss.quiz_tiebreak           = {}
-            ss.quiz_step               = "adjust"
+            ss.quiz_ranking = ranking
+            ss.quiz_ties = _find_ties(ranking, weights)
+            ss.quiz_tiebreak = {f"{a1}__{a2}": 0 for a1, a2 in ss.quiz_ties}
+            ss.quiz_step = "tiebreak" if ss.quiz_ties else "done"
             st.rerun()
-            return {}, []
+            return {}, [], {}
 
-        st.subheader("Step 2 — Quick quiz")
-        st.caption("Your answers help us suggest an amenity ranking.")
+        st.markdown("**Step 2 — A few quick questions**")
+        st.caption("Your answers help us understand what matters most to you.")
 
         answers: dict[str, str | None] = {}
         for q in questions:
             st.markdown(f"**{q['text']}**")
             option_labels = [o["label"] for o in q["options"]]
-            option_keys   = [o["amenity"] for o in q["options"]]
+            option_keys = [o["amenity"] for o in q["options"]]
             prev_key = ss.quiz_answers.get(q["id"])
             prev_idx = option_keys.index(prev_key) if prev_key in option_keys else 0
-            choice   = st.radio(
+
+            choice = st.radio(
                 label=q["id"],
                 options=option_labels,
                 index=prev_idx,
@@ -278,45 +206,46 @@ def render_quiz() -> tuple[dict[str, float], list[str]]:
                 ss.quiz_step = "select"
                 st.rerun()
         with c2:
-            if st.button("See my ranking →", key="_qnext2"):
-                ss.quiz_answers            = answers
-                weights                    = _compute_normalised_weights(ss.quiz_selected, answers)
-                ranking                    = sorted(weights, key=lambda a: weights[a], reverse=True)
+            if st.button("Next →", key="_qnext2"):
+                ss.quiz_answers = answers
+                weights = _compute_normalised_weights(ss.quiz_selected, answers)
+                ranking = sorted(weights, key=lambda a: weights[a], reverse=True)
                 ss.quiz_normalised_weights = weights
-                ss.quiz_ranking            = ranking
-                ties                       = _find_ties(ranking, weights)
-                ss.quiz_ties               = ties
-                ss.quiz_tiebreak           = {f"{a1}__{a2}": 0 for a1, a2 in ties}
-                ss.quiz_step               = "tiebreak" if ties else "adjust"
+                ss.quiz_ranking = ranking
+                ties = _find_ties(ranking, weights)
+                ss.quiz_ties = ties
+                ss.quiz_tiebreak = {f"{a1}__{a2}": 0 for a1, a2 in ties}
+                ss.quiz_step = "tiebreak" if ties else "done"
                 st.rerun()
-        return {}, []
+        return {}, [], {}
 
-    # ── Step 3: Tie-break sliders ──────────────────────────────────────────────
     if ss.quiz_step == "tiebreak":
-        ties    = ss.quiz_ties
+        ties = ss.quiz_ties
         ranking = list(ss.quiz_ranking)
 
-        st.subheader("Step 3 — Break the tie")
-        st.caption(
-            "Some amenities scored equally. Drag the slider to set your preference. "
-            "This only affects ranking order, not the weights used for scoring."
-        )
+        st.markdown("**Step 3 — Help us understand your preference**")
+        st.caption("A few options came out very close, so this helps us refine the order.")
 
         for a1, a2 in ties:
             label1, label2 = AMENITY_LABELS[a1], AMENITY_LABELS[a2]
             key = f"{a1}__{a2}"
-            st.markdown(f"**{label1}** vs **{label2}**")
+
+            st.markdown(f"**{label1} vs {label2}**")
             val = st.slider(
                 label=key,
-                min_value=-5, max_value=5,
+                min_value=-5,
+                max_value=5,
                 value=ss.quiz_tiebreak.get(key, 0),
                 label_visibility="collapsed",
                 key=f"_qtb_{key}",
-                help=f"-5 = strongly prefer {label1} | 0 = no preference | +5 = strongly prefer {label2}",
             )
+
             cl, _, cr = st.columns([2, 1, 2])
-            with cl: st.caption(f"◄ {label1}")
-            with cr: st.caption(f"{label2} ►")
+            with cl:
+                st.caption(f"◄ {label1}")
+            with cr:
+                st.caption(f"{label2} ►")
+
             ss.quiz_tiebreak[key] = val
             st.divider()
 
@@ -332,117 +261,28 @@ def render_quiz() -> tuple[dict[str, float], list[str]]:
                     if val > 0:
                         i1, i2 = ranking.index(a1), ranking.index(a2)
                         ranking[i1], ranking[i2] = ranking[i2], ranking[i1]
-                ss.quiz_ranking = ranking
-                ss.quiz_step    = "adjust"
+                ss.quiz_final_ranking = ranking
+                ss.quiz_step = "done"
                 st.rerun()
-        return {}, []
+        return {}, [], {}
 
-    # ── Step 4: Confirm / adjust ranking ──────────────────────────────────────
-    if ss.quiz_step == "adjust":
-        ranking = list(ss.quiz_ranking)
-        nweights = ss.quiz_normalised_weights
-
-        st.subheader("Step 4 — Confirm your ranking")
-        st.caption(
-            "This is the suggested order from your quiz. "
-            "Use the dropdowns to reorder, then confirm."
-        )
-
-        # Show quiz-derived order and weights for transparency
-        for i, a in enumerate(ranking):
-            w   = nweights.get(a, 0)
-            bar = "█" * int(w * 25)
-            st.markdown(f"**{i+1}. {AMENITY_LABELS[a]}** — quiz score `{w:.3f}` {bar}")
-
-        st.info(
-            "💡 The quiz score only sets the suggested order. "
-            "Scoring uses **rank-sum weights** calculated from whichever order you confirm below.",
-            icon="ℹ️",
-        )
-
-        st.markdown("**Adjust order (optional):**")
-        label_to_key  = {AMENITY_LABELS[a]: a for a in ranking}
-        new_order_labels: list[str] = []
-        for i in range(len(ranking)):
-            remaining = [
-                AMENITY_LABELS[a] for a in ranking
-                if AMENITY_LABELS[a] not in new_order_labels
-            ]
-            default = AMENITY_LABELS[ranking[i]] if AMENITY_LABELS[ranking[i]] in remaining else remaining[0]
-            chosen  = st.selectbox(
-                f"Position {i + 1}",
-                options=remaining,
-                index=remaining.index(default),
-                key=f"_qord_{i}",
-            )
-            new_order_labels.append(chosen)
-
-        # Build final_ranking from selectbox choices
-        seen: set[str] = set()
-        final_ranking: list[str] = []
-        for label in new_order_labels:
-            key = label_to_key.get(label)
-            if key and key not in seen:
-                final_ranking.append(key)
-                seen.add(key)
-        for a in ranking:
-            if a not in seen:
-                final_ranking.append(a)
-
-        # Preview rank-sum weights for the current order
-        preview_w = rank_sum_weights(final_ranking)
-        n, denom  = len(final_ranking), int(len(final_ranking) * (len(final_ranking) + 1) / 2)
-        st.markdown("**Rank-sum weights that will be used for scoring:**")
-        for i, a in enumerate(final_ranking):
-            pts = n - i
-            w   = preview_w[a]
-            bar = "█" * int(w * 30)
-            st.markdown(f"{i+1}. {AMENITY_LABELS[a]} — {pts}/{denom} pts → `{w:.4f}` {bar}")
-
-        c1, c2 = st.columns([1, 5])
-        with c1:
-            if st.button("← Back", key="_qback4"):
-                ss.quiz_step = "tiebreak" if ss.quiz_ties else "quiz"
-                st.rerun()
-        with c2:
-            if st.button("Confirm ranking →", key="_qnext4"):
-                ss.quiz_final_ranking = final_ranking
-                ss.quiz_step          = "done"
-                st.rerun()
-        return {}, []
-
-    # ── Step 5: Done ──────────────────────────────────────────────────────────
     if ss.quiz_step == "done":
-        final_ranking   = ss.quiz_final_ranking
+        final_ranking = ss.quiz_final_ranking or ss.quiz_ranking
         scoring_weights = rank_sum_weights(final_ranking)
-        n               = len(final_ranking)
-        denom           = int(n * (n + 1) / 2)
+        return scoring_weights, final_ranking, ss.quiz_normalised_weights
 
-        st.subheader("Your amenity ranking")
-        st.caption("These rank-sum weights will be used to score listings.")
-        for i, a in enumerate(final_ranking):
-            pts = n - i
-            w   = scoring_weights[a]
-            bar = "█" * int(w * 30)
-            st.markdown(
-                f"**{i+1}. {AMENITY_LABELS[a]}** — "
-                f"{pts}/{denom} pts → weight `{w:.4f}` {bar}"
-            )
-
-        if st.button("← Redo quiz"):
-            reset_quiz()
-            st.rerun()
-
-        return scoring_weights, final_ranking
-
-    return {}, []
+    return {}, [], {}
 
 
 def reset_quiz() -> None:
-    """Call to wipe all quiz state and restart from Step 1."""
     for key in [
-        "quiz_step", "quiz_selected", "quiz_answers",
-        "quiz_normalised_weights", "quiz_ranking",
-        "quiz_ties", "quiz_tiebreak", "quiz_final_ranking",
+        "quiz_step",
+        "quiz_selected",
+        "quiz_answers",
+        "quiz_normalised_weights",
+        "quiz_ranking",
+        "quiz_ties",
+        "quiz_tiebreak",
+        "quiz_final_ranking",
     ]:
         st.session_state.pop(key, None)

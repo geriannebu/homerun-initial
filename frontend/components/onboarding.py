@@ -4,7 +4,7 @@ frontend/components/onboarding.py
 Conversational, step-by-step onboarding that collects user preferences.
 Each step occupies the full screen — one question at a time, Tinder-style.
 
-New flow:
+Flow:
   0  Welcome screen
   1  Budget
   2  Flat type
@@ -12,7 +12,7 @@ New flow:
   4  Minimum remaining lease
   5  Town preference
   6  Priority mode
-  7  Preferences quiz
+  7  Lifestyle quiz
   8  Predicted amenity ranking review / reorder
   9  Done → triggers search
 """
@@ -31,7 +31,7 @@ except Exception:
     HAS_SORTABLES = False
 
 
-TOTAL_STEPS = 9   # steps 1-9, step 0 is welcome
+TOTAL_STEPS = 9
 
 AMENITY_ICONS = {
     "mrt": "🚇",
@@ -40,6 +40,15 @@ AMENITY_ICONS = {
     "schools": "🏫",
     "hawker": "🍜",
     "retail": "🛍️",
+}
+
+FRONTEND_AMENITY_LABELS = {
+    "mrt": "MRT stations",
+    "bus": "Bus stops",
+    "hawker": "Hawker centres",
+    "retail": "Shopping malls",
+    "healthcare": "Hospitals / Polyclinics",
+    "schools": "Schools",
 }
 
 FLAT_TYPE_LABELS = {
@@ -62,46 +71,16 @@ ACCENT = "#FF4458"
 ACCENT_BG = "rgba(255,68,88,0.08)"
 ACCENT_BORDER = "#FF4458"
 
-
-# ── Preferences / lifestyle quiz config ──────────────────────────────────────
-
 AMENITY_KEY_MAP = {
     "train": "mrt",
     "bus": "bus",
-    "polyclinic": "healthcare",
-    "primary_school": "schools",
     "hawker": "hawker",
     "mall": "retail",
     "supermarket": "retail",
+    "polyclinic": "healthcare",
+    "primary_school": "schools",
 }
 
-
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
-def _init_state(ss) -> None:
-    defaults = {
-        "quiz_step":               "select",
-        "quiz_selected":           [],
-        "quiz_answers":            {},
-        "quiz_normalised_weights": {},
-        "quiz_ranking":            [],
-        "quiz_ties":               [],
-        "quiz_tiebreak":           {},
-        "quiz_final_ranking":      [],
-    }
-    for k, v in defaults.items():
-        if k not in ss:
-            ss[k] = v
-
-
-def reset_quiz() -> None:
-    """Call to wipe all quiz state and restart from Step 1."""
-    for key in [
-        "quiz_step", "quiz_selected", "quiz_answers",
-        "quiz_normalised_weights", "quiz_ranking",
-        "quiz_ties", "quiz_tiebreak", "quiz_final_ranking",
-    ]:
-        st.session_state.pop(key, None)
 
 def _progress_bar(step: int):
     pct = int((step / TOTAL_STEPS) * 100)
@@ -117,7 +96,7 @@ def _progress_bar(step: int):
         </div>
         """,
         unsafe_allow_html=True,
-    ) 
+    )
 
 
 def _step_label(step: int):
@@ -152,14 +131,64 @@ def _back_btn(key: str = "back"):
     if st.session_state.onboarding_step > 1:
         if st.button("← Back", key=key):
             if st.session_state.onboarding_step == 8:
-                st.session_state.pop("predicted_amenity_rank", None)
+                st.session_state.pop("pref_quiz_scores", None)
                 st.session_state.pop("pref_amenity_rank", None)
-            st.session_state.onboarding_step -= 1
-            st.rerun()
+                st.session_state.pop("pref_amenity_weights", None)
+                st.session_state.onboarding_step = 7
+                st.session_state["quiz_step"] = "tiebreak"
+                st.rerun()
+            else:
+                st.session_state.onboarding_step -= 1
+                st.rerun()
 
 
 def _default_amenity_order():
-    return list(AMENITY_LABELS.keys())
+    return list(FRONTEND_AMENITY_LABELS.keys())
+
+
+def _map_quiz_ranking(quiz_ranking: list[str]) -> list[str]:
+    mapped = []
+    for key in quiz_ranking:
+        new_key = AMENITY_KEY_MAP.get(key)
+        if new_key and new_key not in mapped:
+            mapped.append(new_key)
+
+    for key in FRONTEND_AMENITY_LABELS.keys():
+        if key not in mapped:
+            mapped.append(key)
+
+    return mapped
+
+
+def _map_quiz_weights(quiz_weights: dict[str, float]) -> dict[str, float]:
+    mapped = {k: 0.0 for k in FRONTEND_AMENITY_LABELS.keys()}
+    for old_key, weight in quiz_weights.items():
+        new_key = AMENITY_KEY_MAP.get(old_key)
+        if new_key:
+            mapped[new_key] += float(weight)
+
+    total = sum(mapped.values())
+    if total > 0:
+        mapped = {k: v / total for k, v in mapped.items()}
+
+    return mapped
+
+
+def _priority_explainer(rank: list[str]) -> str:
+    if not rank:
+        return "We’ve estimated what matters most to you based on your responses."
+
+    top = rank[:3]
+    labels = [FRONTEND_AMENITY_LABELS.get(k, k) for k in top]
+
+    if len(labels) == 1:
+        joined = labels[0]
+    elif len(labels) == 2:
+        joined = f"{labels[0]} and {labels[1]}"
+    else:
+        joined = f"{labels[0]}, {labels[1]}, and {labels[2]}"
+
+    return f"Based on your answers, we think {joined} are likely to matter most to you."
 
 
 def _move_item(rank, idx, direction):
@@ -193,7 +222,7 @@ def _render_rank_list_with_buttons(rank):
                             background:#f9fafb;border:1px solid #eceff3;border-radius:12px;">
                     <span style="font-size:1.1rem;">{AMENITY_ICONS.get(key, '•')}</span>
                     <span style="font-size:0.92rem;font-weight:600;color:#1a1a2e;">
-                        {AMENITY_LABELS.get(key, key)}
+                        {FRONTEND_AMENITY_LABELS.get(key, key)}
                     </span>
                 </div>
                 """,
@@ -221,7 +250,7 @@ def _render_rank_list_sortable(rank):
     )
 
     labels_to_key = {
-        f"{AMENITY_ICONS.get(k, '•')} {AMENITY_LABELS.get(k, k)}": k
+        FRONTEND_AMENITY_LABELS.get(k, k): k
         for k in rank
     }
     display_items = list(labels_to_key.keys())
@@ -237,10 +266,6 @@ def _render_rank_list_sortable(rank):
 
 
 def render_onboarding() -> bool:
-    """
-    Renders the onboarding flow.
-    Returns True when onboarding is complete and inputs are ready.
-    """
     step = st.session_state.onboarding_step
 
     st.markdown(
@@ -274,8 +299,6 @@ def render_onboarding() -> bool:
     st.markdown("</div>", unsafe_allow_html=True)
     return False
 
-
-# ── Step 0: Welcome ──────────────────────────────────────────────────────────
 
 def _render_welcome():
     components.html(
@@ -379,11 +402,10 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
     col = st.columns([1, 2, 1])[1]
     with col:
         if st.button("Get started →", key="welcome_next", type="primary", use_container_width=True):
+            reset_quiz()
             st.session_state.onboarding_step = 1
             st.rerun()
 
-
-# ── Step 1: Budget ───────────────────────────────────────────────────────────
 
 def _render_budget():
     _progress_bar(1)
@@ -416,7 +438,6 @@ def _render_budget():
             st.session_state.pref_budget = None
             st.session_state.onboarding_step = 2
             st.rerun()
-
     else:
         st.session_state.pref_budget_flexible = False
 
@@ -444,9 +465,7 @@ def _render_budget():
         st.markdown(
             """
             <style>
-            div[data-testid="stTextInput"] label {
-                display: none !important;
-            }
+            div[data-testid="stTextInput"] label { display: none !important; }
             div[data-testid="stTextInput"] input {
                 text-align: center !important;
                 font-family: "DM Sans", sans-serif !important;
@@ -460,11 +479,7 @@ def _render_budget():
                 padding-top: 0.15rem !important;
                 padding-bottom: 0.15rem !important;
             }
-            div[data-testid="stTextInput"] > div {
-                border: none !important;
-                background: transparent !important;
-                box-shadow: none !important;
-            }
+            div[data-testid="stTextInput"] > div,
             div[data-testid="stTextInput"] > div > div {
                 border: none !important;
                 background: transparent !important;
@@ -501,8 +516,6 @@ def _render_budget():
     _back_btn("budget_back")
 
 
-# ── Step 2: Flat type ────────────────────────────────────────────────────────
-
 def _render_flat_type():
     _progress_bar(2)
     _step_label(2)
@@ -532,8 +545,6 @@ def _render_flat_type():
     _back_btn("ft_back")
 
 
-# ── Step 3: Floor area ───────────────────────────────────────────────────────
-
 def _render_floor_area():
     _progress_bar(3)
     _step_label(3)
@@ -561,8 +572,6 @@ def _render_floor_area():
         st.rerun()
     _back_btn("area_back")
 
-
-# ── Step 4: Remaining lease ──────────────────────────────────────────────────
 
 def _render_lease():
     _progress_bar(4)
@@ -593,10 +602,8 @@ def _render_lease():
 
     st.markdown(
         f"<div style='text-align:center;margin:0.4rem 0 0.6rem;'>"
-        f"<span style='font-size:2.2rem;font-weight:800;letter-spacing:-0.04em;"
-        f"color:#0f172a;'>{lease} years</span></div>"
-        f"<div style='text-align:center;font-size:0.82rem;color:#9ca3af;"
-        f"margin-bottom:1.6rem;'>{hint}</div>",
+        f"<span style='font-size:2.2rem;font-weight:800;letter-spacing:-0.04em;color:#0f172a;'>{lease} years</span></div>"
+        f"<div style='text-align:center;font-size:0.82rem;color:#9ca3af;margin-bottom:1.6rem;'>{hint}</div>",
         unsafe_allow_html=True,
     )
 
@@ -606,8 +613,6 @@ def _render_lease():
         st.rerun()
     _back_btn("lease_back")
 
-
-# ── Step 5: Town ─────────────────────────────────────────────────────────────
 
 def _render_town():
     _progress_bar(5)
@@ -647,8 +652,6 @@ def _render_town():
         st.rerun()
     _back_btn("town_back")
 
-
-# ── Step 6: Priority mode ────────────────────────────────────────────────────
 
 def _render_priority_mode():
     _progress_bar(6)
@@ -691,8 +694,6 @@ def _render_priority_mode():
     _back_btn("priority_mode_back")
 
 
-# ── Step 7: Preferences quiz ─────────────────────────────────────────────────
-
 def _render_lifestyle():
     _progress_bar(7)
     _step_label(7)
@@ -701,92 +702,104 @@ def _render_lifestyle():
         "Answer a few quick questions so we can personalise your recommendations."
     )
 
-    scoring_weights, final_ranking = render_quiz()
+    scoring_weights, final_ranking, normalised_weights = render_quiz()
 
-    # ── Quiz still in progress ───────────────────────────────
     if not final_ranking:
-        return  # stay on step 7
+        return
 
-    # ── Quiz completed ───────────────────────────────────────
-    st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
+    mapped_ranking = _map_quiz_ranking(final_ranking)
+    mapped_weights = _map_quiz_weights(scoring_weights)
+    mapped_quiz_scores = _map_quiz_weights(normalised_weights)
 
-    st.success("Preferences captured ✓")
-
-    if _next_btn("See my predicted priorities →", key="lifestyle_next"):
-        # Store results into onboarding state
-        st.session_state["pref_amenity_rank"] = final_ranking
-        st.session_state["pref_amenity_weights"] = scoring_weights
-
-        # Move to next step
-        st.session_state.onboarding_step = 8
-        st.rerun()
-
-    _back_btn("lifestyle_step_back")
+    st.session_state["pref_amenity_rank"] = mapped_ranking
+    st.session_state["pref_amenity_weights"] = mapped_weights
+    st.session_state["pref_quiz_scores"] = mapped_quiz_scores
+    st.session_state.onboarding_step = 8
+    st.rerun()
 
 
-# ── Step 8: Predicted amenity ranking ────────────────────────────────────────
 def _render_predicted_amenity_ranking():
     _progress_bar(8)
     _step_label(8)
     _heading(
         "Your predicted priorities",
-        "We've inferred what matters most to you. You can tweak the order if needed."
+        "We’ve inferred what matters most to you from your answers. You can adjust the order if needed."
     )
 
-    # Get ranking from quiz
     rank = st.session_state.get("pref_amenity_rank")
-
-    # Fallback safety (shouldn't happen, but good practice)
     if not rank:
-        rank = _default_amenity_order()
+        rank = list(FRONTEND_AMENITY_LABELS.keys())
         st.session_state.pref_amenity_rank = rank
 
-    # ── Display reorder UI ─────────────────────────────
+    st.markdown(
+        f"<div style='padding:12px 14px;background:#fff7ed;border:1px solid #fed7aa;"
+        f"border-radius:12px;margin-bottom:1rem;font-size:0.9rem;color:#9a3412;'>"
+        f"{_priority_explainer(rank)}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
     if HAS_SORTABLES:
-        _render_rank_list_sortable(rank)
+        labels_to_key = {FRONTEND_AMENITY_LABELS.get(k, k): k for k in rank}
+        display_rank = [FRONTEND_AMENITY_LABELS.get(k, k) for k in rank]
+        sorted_display = sort_items(display_rank, direction="vertical", key="amenity_sortable")
+        st.session_state.pref_amenity_rank = [labels_to_key[label] for label in sorted_display]
     else:
         _render_rank_list_with_buttons(rank)
 
-    st.markdown("<div style='height:1.2rem'></div>", unsafe_allow_html=True)
+    with st.expander("Why these priorities?"):
+        st.markdown(
+            "We inferred this order from your quiz responses. Higher-scoring amenities are the ones your answers pointed to more strongly."
+        )
+        quiz_scores = st.session_state.get("pref_quiz_scores", {})
+        if quiz_scores:
+            for key in rank:
+                label = FRONTEND_AMENITY_LABELS.get(key, key)
+                score = quiz_scores.get(key, 0.0)
+                st.markdown(f"**{label}** — inferred score: `{score:.3f}`")
 
-    # ── Continue button ────────────────────────────────
-    if _next_btn("Looks good →", key="amenity_rank_next"):
-        # Recompute weights from FINAL order
-        final_rank = st.session_state.get("pref_amenity_rank")
+    st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
 
-        n = len(final_rank)
-        raw_weights = {k: (n - i) for i, k in enumerate(final_rank)}
-        total = sum(raw_weights.values())
+    c1, c2, c3 = st.columns([1, 2, 1])
 
-        weights = {k: v / total for k, v in raw_weights.items()}
+    with c1:
+        if st.button("↺ Start over", key="amenity_start_over", use_container_width=True):
+            st.session_state.pop("pref_quiz_scores", None)
+            st.session_state.pop("pref_amenity_rank", None)
+            st.session_state.pop("pref_amenity_weights", None)
+            reset_quiz()
+            st.session_state.onboarding_step = 7
+            st.rerun()
 
-        # Save back to session
-        st.session_state["pref_amenity_weights"] = weights
-
-        # Move to next step
-        st.session_state.onboarding_step = 9
-        st.rerun()
+    with c2:
+        if st.button("Looks good →", key="amenity_rank_next", type="primary", use_container_width=True):
+            final_rank = st.session_state.get("pref_amenity_rank") or list(FRONTEND_AMENITY_LABELS.keys())
+            n = len(final_rank)
+            raw_weights = {k: (n - i) for i, k in enumerate(final_rank)}
+            total = sum(raw_weights.values())
+            weights = {k: v / total for k, v in raw_weights.items()}
+            st.session_state["pref_amenity_weights"] = weights
+            st.session_state.onboarding_step = 9
+            st.rerun()
 
     _back_btn("amenity_rank_back")
 
-# ── Step 9: Done / trigger search ────────────────────────────────────────────
 
 def _render_done():
     st.session_state.onboarding_complete = True
 
 
-# ── Build UserInputs from session state ──────────────────────────────────────
-
 def build_inputs_from_prefs() -> UserInputs:
-    """Convert stored onboarding prefs into a UserInputs dataclass."""
-    rank = st.session_state.get("pref_amenity_rank") or list(AMENITY_LABELS.keys())
-    n = len(rank)
+    rank = st.session_state.get("pref_amenity_rank") or list(FRONTEND_AMENITY_LABELS.keys())
+    amenity_weights = st.session_state.get("pref_amenity_weights")
 
-    raw_weights = {key: (n - i) for i, key in enumerate(rank)}
-    total = sum(raw_weights.values())
-    amenity_weights = {k: v / total for k, v in raw_weights.items()}
+    if not amenity_weights:
+        n = len(rank)
+        raw_weights = {key: (n - i) for i, key in enumerate(rank)}
+        total = sum(raw_weights.values())
+        amenity_weights = {k: v / total for k, v in raw_weights.items()}
 
-    for key in AMENITY_LABELS:
+    for key in FRONTEND_AMENITY_LABELS:
         if key not in amenity_weights:
             amenity_weights[key] = 0.0
 
@@ -820,6 +833,6 @@ def get_preferences_display() -> dict:
             "balanced": "Balanced 🎯⚖️",
         }.get(st.session_state.get("pref_priority_mode"), "Balanced 🎯⚖️"),
         "Amenity ranking": " → ".join(
-            f"{AMENITY_ICONS.get(k, '')} {AMENITY_LABELS.get(k, k)}" for k in rank
+            f"{AMENITY_ICONS.get(k, '')} {FRONTEND_AMENITY_LABELS.get(k, k)}" for k in rank
         ) or "—",
     }
