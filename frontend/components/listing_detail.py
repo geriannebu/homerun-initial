@@ -55,7 +55,7 @@ def _val_style(diff):
 
 
 @st.dialog("Listing Details", width="large")
-def show_listing_detail(listing_id: str):
+def show_listing_detail(listing_id: str, show_actions: bool = True):
 
     # ── Find listing ─────────────────────────────────────────────────────
     row = None
@@ -105,18 +105,17 @@ def show_listing_detail(listing_id: str):
 
     # ── Value score ─────────────────────────────────────────────────────
     value_score = max(0, min(100, 100 - abs(diff)))
-
     overall_score = round((value_score * 0.6 + amenity_avg * 0.4), 1)
 
-    # ── HEADER ──────────────────────────────────────────────────────────
-    address = row.get("address", "")  # <-- full address from your dataset
+    # ── Header ──────────────────────────────────────────────────────────
+    address = row.get("address", "")
     town = row.get("town", "")
 
     st.markdown(f"""
     <div style="display:flex;justify-content:space-between;">
         <div>
             <h2>{town}</h2>
-            <p>{address}</p>   <!-- display the address -->
+            <p>{address}</p>
             <p>{flat_type} · {area} sqm · Storey {storey}</p>
         </div>
         <div style="text-align:right;">
@@ -137,10 +136,8 @@ def show_listing_detail(listing_id: str):
 
     # ── Scores ──────────────────────────────────────────────────────────
     st.markdown("### 🎯 Match Scores")
-
     st.progress(overall_score / 100)
     st.write(f"Overall Match: **{overall_score:.0f}%**")
-
     st.write(f"💰 Value Score: {value_score:.0f}")
     st.write(f"📍 Amenity Score: {amenity_avg:.0f}")
 
@@ -148,7 +145,6 @@ def show_listing_detail(listing_id: str):
     st.markdown("### 📍 Amenities Nearby")
 
     def proximity_label(dist):
-        """Return a descriptive label based on distance."""
         if dist is None or dist > 1500:
             return "Very far"
         elif dist > 1000:
@@ -171,9 +167,9 @@ def show_listing_detail(listing_id: str):
     st.write(row_display("🍜 Hawker", row.get("hawker_1_dist_m"), row.get("hawker_score")))
     st.write(row_display("🛍️ Mall", row.get("mall_1_dist_m"), row.get("mall_score")))
     st.write(row_display("🏥 Polyclinic", row.get("polyclinic_1_dist_m"), row.get("health_score")))
+
     # ── Market context ──────────────────────────────────────────────────
     st.markdown("### 📊 Market Context")
-
     st.write(f"Recent median: {fmt_sgd(row.get('median_6m_similar', 0))}")
 
     # ── Map ─────────────────────────────────────────────────────────────
@@ -181,25 +177,26 @@ def show_listing_detail(listing_id: str):
     st.markdown(_map_iframe(lat, lon), unsafe_allow_html=True)
 
     # ── Actions ─────────────────────────────────────────────────────────
-    st.markdown("---")
+    if show_actions:
+        st.markdown("---")
 
-    is_saved = session_data and listing_id in session_data.get("liked_ids", [])
-    is_super = session_data and listing_id in session_data.get("super_ids", [])
+        is_saved = session_data and listing_id in session_data.get("liked_ids", [])
+        is_passed = session_data and listing_id in session_data.get("passed_ids", [])
 
-    col1, col2 = st.columns(2)
+        col1, col2 = st.columns(2)
 
-    with col1:
-        if not is_saved:
-            if st.button("♥ Save", use_container_width=True):
-                record_swipe(session_data["session_id"], listing_id, "right")
-                st.rerun()
-        else:
-            st.success("Saved")
+        with col1:
+            if not is_passed:
+                if st.button("✕ Pass", use_container_width=True):
+                    record_swipe(session_data["session_id"], listing_id, "left")
+                    st.rerun()
+            else:
+                st.info("Passed")
 
-    with col2:
-        if not is_super:
-            if st.button("⭐ Super Save", use_container_width=True):
-                record_swipe(session_data["session_id"], listing_id, "up")
-                st.rerun()
-        else:
-            st.warning("Super Saved")
+        with col2:
+            if not is_saved:
+                if st.button("♥ Save", use_container_width=True):
+                    record_swipe(session_data["session_id"], listing_id, "right")
+                    st.rerun()
+            else:
+                st.success("Saved")

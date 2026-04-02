@@ -328,7 +328,7 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                 use_container_width=True,
                 type="primary",
             ):
-                show_listing_detail(lid)
+                show_listing_detail(lid, show_actions=False)
 
         with btn_b:
             sel_label = "✓ Selected" if is_sel else "Select"

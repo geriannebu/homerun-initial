@@ -57,7 +57,7 @@ def get_prediction_bundle(inputs: UserInputs, ranking_profile: str = "balanced")
         rooms=[],  # can expand later
         preferred_towns=[inputs.town] if getattr(inputs, "town", None) else [],
         min_sqft=0,
-        top_n=len(listings_df)
+        top_n=15
     )
     scored_listings = rec_results["filtered"]  # filtered listings with scoring
 
