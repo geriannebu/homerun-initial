@@ -968,7 +968,7 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
 .hero-emoji{
   font-size:3.8rem;line-height:1;margin-bottom:0.9rem;
   animation:emojiSpring 0.9s cubic-bezier(0.22,1,0.36,1) both;
-  animation-delay:0.05s;
+  animation-delay:0.4s;
 }
 
 /* eyebrow */
@@ -976,7 +976,7 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
   font-size:0.62rem;font-weight:700;text-transform:uppercase;
   color:#FF4458;margin-bottom:0.8rem;
   animation:spreadIn 0.7s cubic-bezier(0.16,1,0.3,1) both;
-  animation-delay:0.45s;
+  animation-delay:1.0s;
 }
 
 /* line 1 — blur-float */
@@ -984,7 +984,7 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
   font-size:clamp(1.75rem,4.8vw,2.5rem);font-weight:800;letter-spacing:-0.05em;
   color:#0b132d;line-height:1.08;margin-bottom:0.1rem;
   animation:floatUp 0.75s cubic-bezier(0.16,1,0.3,1) both;
-  animation-delay:0.78s;
+  animation-delay:1.5s;
 }
 
 /* line 2 — wipe-from-below reveal, then continuous shine */
@@ -1001,7 +1001,7 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
   -webkit-background-clip:text;background-clip:text;color:transparent;
   animation:wipeUp 0.65s cubic-bezier(0.16,1,0.3,1) both,
             shine 4s linear 2s infinite;
-  animation-delay:1.05s,0s;
+  animation-delay:1.9s,0s;
   animation-fill-mode:both;
 }
 
@@ -1010,7 +1010,7 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
   font-size:0.86rem;color:#6b7280;max-width:290px;
   line-height:1.8;font-weight:500;
   animation:driftIn 0.8s cubic-bezier(0.16,1,0.3,1) both;
-  animation-delay:1.35s;
+  animation-delay:2.3s;
 }
 </style>
 </head>
