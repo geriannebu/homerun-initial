@@ -735,7 +735,7 @@ def render_comparison_page(inputs, listings_df: pd.DataFrame):
     custom_df = pd.DataFrame(st.session_state.get("custom_compare_rows", []))
 
     if listings_df.empty and custom_df.empty:
-        st.info("No flats selected yet. Go to Saved to pick flats, or add a hypothetical flat above.")
+        st.info("No flats selected yet. Go to Saved to pick flats.")
         return
 
     frames = []
