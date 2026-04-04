@@ -32,7 +32,6 @@ def init_session_state():
         #   "bundle": dict,
         #   "map_bundle": dict,
         #   "liked_ids": [],
-        #   "super_ids": [],
         #   "passed_ids": [],
         #   "unseen_ids": [],        # listing_ids not yet swiped
         #   "created_at": str,
@@ -86,7 +85,6 @@ def create_search_session(inputs, bundle, map_bundle) -> str:
         "bundle": bundle,
         "map_bundle": map_bundle,
         "liked_ids": [],
-        "super_ids": [],
         "passed_ids": [],
         "unseen_ids": listing_ids.copy(),
         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -129,8 +127,6 @@ def record_swipe(session_id: str, listing_id: str, direction: str):
         if direction in ("right", "up"):
             if listing_id not in s["liked_ids"]:
                 s["liked_ids"].append(listing_id)
-            if direction == "up" and listing_id not in s["super_ids"]:
-                s["super_ids"].append(listing_id)
         elif direction == "left":
             if listing_id not in s["passed_ids"]:
                 s["passed_ids"].append(listing_id)
@@ -162,7 +158,6 @@ def get_liked_df():
             row = match.iloc[0].to_dict()
             row["session_label"] = s["label"]
             row["session_id"]    = s["session_id"]
-            row["is_super"]      = lid in s["super_ids"]
             rows.append(row)
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
@@ -185,7 +180,6 @@ def get_active_session_liked_df():
         row = match.iloc[0].to_dict()
         row["session_label"] = session["label"]
         row["session_id"] = session["session_id"]
-        row["is_super"] = lid in session.get("super_ids", [])
         rows.append(row)
 
     return pd.DataFrame(rows) if rows else pd.DataFrame()

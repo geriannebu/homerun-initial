@@ -2,7 +2,7 @@
 frontend/pages/saved.py
 
 Shows all liked flats across all search sessions.
-Flats are grouped by session. Super-saved flats are highlighted.
+Flats are grouped by session. 
 Users can click "View details" for full amenity/score breakdown,
 select flats for comparison, or remove them.
 """
@@ -10,6 +10,7 @@ select flats for comparison, or remove them.
 import pandas as pd
 import streamlit as st
 import pydeck as pdk
+import numpy as np
 from backend.services.map_service import mock_listing_points
 from backend.utils.formatters import fmt_sgd, valuation_tag_html
 from frontend.state.session import get_active_session_liked_df, get_active_session
@@ -21,6 +22,14 @@ from frontend.pages.flat_outputs.map_view import top_priority_keys, add_nearest_
 def render_saved_page():
     session = get_active_session()
     liked_df = get_active_session_liked_df()
+    extra_rows = []
+    if session:
+        extra_rows = session.get("extra_saved_rows", [])
+
+    if extra_rows:
+        extra_df = pd.DataFrame(extra_rows)
+        liked_df = pd.concat([liked_df, extra_df], ignore_index=True, sort=False)
+    
     session_label = session["label"] if session else "No active session"
 
     st.markdown(
@@ -280,8 +289,11 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
         lid = str(row["listing_id"])
         session_id = str(row.get("session_id", "na"))
         is_sel = lid in selected_ids
-        tag = valuation_tag_html(row.get("valuation_label", ""))
-        diff = float(row.get("asking_vs_predicted_pct", 0))
+        valuation_label = row.get("valuation_label", "")
+        tag = valuation_tag_html(valuation_label) if valuation_label else ""
+
+        diff_raw = row.get("asking_vs_predicted_pct", row.get("valuation_pct", np.nan))
+        diff = float(diff_raw) if pd.notna(diff_raw) else np.nan
         badge = "♥ Saved"
         badge_col = "#059E87"
 
@@ -299,21 +311,21 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                     <div>
                         <div class="nw-listing-id">{card_title}</div>
                         <div class="nw-listing-meta">
-                            {row['flat_type']} · {row.get('floor_area_sqm','')} sqm
-                            · Storey {row.get('storey_range','')}
+                            {row.get('flat_type', '—')} · {row.get('floor_area_sqm', '')} sqm
+                        · Storey {row.get('storey_range', '')}
                         </div>
                     </div>
                     <div>
-                        <div class="nw-listing-asking">{fmt_sgd(row['asking_price'])}</div>
+                        <div class="nw-listing-asking">{fmt_sgd(row.get('asking_price')) if pd.notna(row.get('asking_price')) else "—"}</div>
                         <div class="nw-listing-predicted">
-                            Predicted: {fmt_sgd(row['predicted_price'])}
+                            Predicted: {fmt_sgd(row.get('predicted_price')) if pd.notna(row.get('predicted_price')) else "—"}
                         </div>
                     </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;
                             margin-top:8px;flex-wrap:wrap;">
                     {tag}
-                    <span style="font-size:0.76rem;color:#9ca3af;">{diff:+.1f}% vs model</span>
+                    <span style="font-size:0.76rem;color:#9ca3af;">{"{:+.1f}% vs model".format(diff) if pd.notna(diff) else ""}</span>
                     <span style="font-size:0.72rem;font-weight:700;
                         color:{badge_col};margin-left:auto;">{badge}</span>
                 </div>
@@ -330,7 +342,7 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                 use_container_width=True,
                 type="primary",
             ):
-                show_listing_detail(lid, show_actions=False)
+                show_listing_detail(row.to_dict(), show_actions=False)
 
         with btn_b:
             sel_label = "✓ Selected" if is_sel else "Select"
@@ -344,14 +356,19 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
 
         with btn_c:
             if st.button("Remove", key=f"rm_{lid}_{session_id}_{idx}", use_container_width=True):
-                for s in st.session_state.search_sessions:
-                    if s["session_id"] == session_id:
-                        if lid in s["liked_ids"]:
-                            s["liked_ids"].remove(lid)
-                        break
+                session = get_active_session()
+
+                if session is not None:
+                    if lid in session.get("liked_ids", []):
+                        session["liked_ids"].remove(lid)
+
+                    if "extra_saved_rows" in session:
+                        session["extra_saved_rows"] = [
+                            r for r in session["extra_saved_rows"]
+                            if str(r.get("listing_id", "")) != str(lid)
+                        ]
 
                 st.session_state.compare_selected_ids = [
                     x for x in selected_ids if x != lid
                 ]
                 st.rerun()
-    
