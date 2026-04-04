@@ -724,13 +724,28 @@ def _render_value_strip(bundle: dict, inputs):
         ci_sub     = "95% price range"
 
     st.markdown(
+    """
+    <div style="margin-bottom:10px;">
+        <div style="font-size:1.0rem;font-weight:800;color:#0f172a;letter-spacing:-0.02em;">
+            Overview of your filtered matches
+        </div>
+        <div style="font-size:0.82rem;color:#64748b;margin-top:3px;line-height:1.45;">
+            These figures summarise the median pricing across flats that match your quiz filters.
+            Individual recommendations below may differ.
+        </div>
+    </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
         f"""
         <div style="display:flex;align-items:center;
                     background:#f8fafc;border:1px solid #eef2f7;border-radius:16px;
                     margin-bottom:6px;overflow:hidden;">
             <div style="flex:1;padding:10px 14px;">
                 <div style="font-size:0.58rem;font-weight:700;text-transform:uppercase;
-                             letter-spacing:0.09em;color:#94a3b8;">Predicted</div>
+                             letter-spacing:0.09em;color:#94a3b8;">Median predicted value</div>
                 <div style="font-size:1.0rem;font-weight:800;color:#0f172a;
                              letter-spacing:-0.025em;margin-top:1px;">
                     S${pred:,.0f}
@@ -739,7 +754,7 @@ def _render_value_strip(bundle: dict, inputs):
             <div style="width:1px;height:36px;background:#e8edf4;flex-shrink:0;"></div>
             <div style="flex:1.4;padding:10px 14px;">
                 <div style="font-size:0.58rem;font-weight:700;text-transform:uppercase;
-                             letter-spacing:0.09em;color:#94a3b8;">{ci_sub}</div>
+                             letter-spacing:0.09em;color:#94a3b8;">Median 95% price range</div>
                 <div style="font-size:0.82rem;font-weight:800;color:#0f172a;
                              letter-spacing:-0.02em;margin-top:1px;white-space:nowrap;">
                     {ci_display}
@@ -757,7 +772,7 @@ def _render_value_strip(bundle: dict, inputs):
             <div style="width:1px;height:36px;background:#e8edf4;flex-shrink:0;"></div>
             <div style="flex:1;padding:10px 14px;background:{bg};border-left:2px solid {border};">
                 <div style="font-size:0.58rem;font-weight:700;text-transform:uppercase;
-                             letter-spacing:0.09em;color:#94a3b8;">Headroom</div>
+                             letter-spacing:0.09em;color:#94a3b8;">Budget vs median</div>
                 <div style="font-size:1.0rem;font-weight:800;color:{color};
                              letter-spacing:-0.025em;margin-top:1px;">
                     {headroom_display}
