@@ -150,11 +150,21 @@ def render_quiz() -> tuple[dict[str, float], list[str], dict[str, float]]:
                 if st.checkbox(label, key=f"_qcb_{key}"):
                     chosen.append(key)
 
-        st.button(
-            "Next →",
-            disabled=len(chosen) < 1,
-            on_click=lambda: ss.update({"quiz_selected": chosen, "quiz_step": "quiz"}),
-        )
+        c1, c2 = st.columns([1, 5])
+
+        with c1:
+            if st.button("← Back", key="_qback1"):
+                st.session_state.onboarding_step = 6
+                st.rerun()
+
+        with c2:
+            st.button(
+                "Next →",
+                key="_qnext1",
+                disabled=len(chosen) < 1,
+                on_click=lambda: ss.update({"quiz_selected": chosen, "quiz_step": "quiz"}),
+            )
+
         return {}, [], {}
 
     if ss.quiz_step == "quiz":
