@@ -1,9 +1,4 @@
 """
-frontend/components/onboarding.py
-
-Conversational, step-by-step onboarding that collects user preferences.
-Each step occupies the full screen — one question at a time, Tinder-style.
-
 Flow:
   0  Welcome screen
   1  Budget
@@ -296,9 +291,9 @@ def render_onboarding() -> bool:
     elif step == 8:
         _render_predicted_amenity_ranking()
     elif step == 9:
-        _render_done()
+        done = _render_done()
         st.markdown("</div>", unsafe_allow_html=True)
-        return True
+        return done
 
     st.markdown("</div>", unsafe_allow_html=True)
     return False
@@ -885,8 +880,153 @@ def _render_predicted_amenity_ranking():
     _back_btn("amenity_rank_back")
 
 
-def _render_done():
-    st.session_state.onboarding_complete = True
+def _render_done() -> bool:
+    """Completion splash — returns True when the user clicks the CTA."""
+    components.html(
+        """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;background:transparent;overflow:hidden;}
+
+/* ambient float */
+@keyframes f1{0%,100%{transform:translate(0,0) rotate(0deg)}25%{transform:translate(14px,-22px) rotate(10deg)}75%{transform:translate(-10px,14px) rotate(-7deg)}}
+@keyframes f2{0%,100%{transform:translate(0,0) rotate(0deg)}33%{transform:translate(-18px,16px) rotate(-12deg)}67%{transform:translate(13px,-11px) rotate(8deg)}}
+@keyframes f3{0%,100%{transform:translate(0,0) rotate(0deg)}50%{transform:translate(11px,20px) rotate(15deg)}}
+@keyframes f4{0%,100%{transform:translate(0,0) rotate(0deg)}40%{transform:translate(-13px,-18px) rotate(-9deg)}80%{transform:translate(9px,9px) rotate(5deg)}}
+@keyframes f5{0%,100%{transform:translate(0,0) rotate(0deg)}30%{transform:translate(17px,11px) rotate(13deg)}70%{transform:translate(-15px,-13px) rotate(-8deg)}}
+@keyframes f6{0%,100%{transform:translate(0,0) rotate(0deg)}50%{transform:translate(-9px,22px) rotate(-14deg)}}
+@keyframes glowPulse{0%,100%{opacity:0.2;transform:translate(-50%,-50%) scale(1)}50%{opacity:0.5;transform:translate(-50%,-50%) scale(1.1)}}
+
+/* single shared entrance — every element uses this, only delay differs */
+@keyframes fadeUp{
+  from{opacity:0;transform:translateY(20px)}
+  to  {opacity:1;transform:translateY(0)}
+}
+
+/* gradient shine */
+@keyframes shine{0%{background-position:200% center}100%{background-position:-200% center}}
+
+/* scene */
+.scene{
+  position:relative;width:100%;height:420px;overflow:hidden;
+  background:#ffffff;border-radius:24px;
+}
+.glow{
+  position:absolute;top:40%;left:50%;
+  width:560px;height:320px;
+  background:radial-gradient(ellipse,rgba(255,68,88,0.11) 0%,rgba(255,179,71,0.05) 50%,transparent 70%);
+  animation:glowPulse 5s ease-in-out infinite;pointer-events:none;
+}
+.p{position:absolute;line-height:1;}
+.centre{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  z-index:10;padding:2rem 2.5rem;text-align:center;
+}
+
+/* green check badge */
+.badge{
+  display:inline-flex;align-items:center;gap:6px;
+  background:#f0fdf4;border:1px solid #bbf7d0;
+  color:#16a34a;font-size:0.72rem;font-weight:700;
+  letter-spacing:0.08em;text-transform:uppercase;
+  border-radius:999px;padding:4px 14px;
+  margin-bottom:1.6rem;
+  opacity:0;animation:fadeUp 1.1s cubic-bezier(0.25,1,0.5,1) 0.3s forwards;
+}
+
+/* small intro line */
+.intro{
+  font-size:0.95rem;font-weight:500;color:#6b7280;
+  margin-bottom:0.3rem;
+  opacity:0;animation:fadeUp 1.1s cubic-bezier(0.25,1,0.5,1) 0.65s forwards;
+}
+
+/* big dark heading */
+.big{
+  font-size:clamp(2.4rem,6.5vw,3.4rem);font-weight:800;letter-spacing:-0.05em;
+  color:#0b132d;line-height:1.0;margin-bottom:0.1rem;
+  opacity:0;animation:fadeUp 1.1s cubic-bezier(0.25,1,0.5,1) 1.05s forwards;
+}
+
+/* big gradient line + shine after it appears */
+.big-grad{
+  font-size:clamp(2.4rem,6.5vw,3.4rem);font-weight:800;letter-spacing:-0.05em;
+  line-height:1.0;margin-bottom:1.6rem;
+  background:linear-gradient(120deg,#FF6B6B 0%,#FF4458 25%,#FFB347 55%,#FF8C69 80%,#FF6B6B 100%);
+  background-size:260% auto;
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  opacity:0;
+  animation:fadeUp 1.1s cubic-bezier(0.25,1,0.5,1) 1.45s forwards,
+            shine 4s linear 2.8s infinite;
+}
+
+/* sub */
+.sub{
+  font-size:0.84rem;color:#9ca3af;max-width:270px;
+  line-height:1.75;font-weight:400;
+  opacity:0;animation:fadeUp 1.1s cubic-bezier(0.25,1,0.5,1) 2.05s forwards;
+}
+</style>
+</head>
+<body>
+<div class="scene">
+  <div class="glow"></div>
+  <span class="p" style="top:7%;left:7%;font-size:2.4rem;opacity:0.45;animation:f1 7s ease-in-out infinite;">&#127968;</span>
+  <span class="p" style="top:19%;left:16%;font-size:1.3rem;opacity:0.28;animation:f3 10s ease-in-out infinite;animation-delay:-2.5s;">&#127795;</span>
+  <span class="p" style="top:5%;left:30%;font-size:1rem;opacity:0.16;animation:f2 12s ease-in-out infinite;animation-delay:-5s;">&#10024;</span>
+  <span class="p" style="top:6%;right:9%;font-size:2.2rem;opacity:0.40;animation:f2 8.5s ease-in-out infinite;animation-delay:-1s;">&#127969;</span>
+  <span class="p" style="top:21%;right:18%;font-size:1.25rem;opacity:0.28;animation:f4 10.5s ease-in-out infinite;animation-delay:-3.5s;">&#128273;</span>
+  <span class="p" style="top:9%;right:33%;font-size:0.95rem;opacity:0.14;animation:f1 13s ease-in-out infinite;animation-delay:-7s;">&#128171;</span>
+  <span class="p" style="top:43%;left:5%;font-size:1.8rem;opacity:0.35;animation:f5 9s ease-in-out infinite;animation-delay:-2s;">&#128106;</span>
+  <span class="p" style="top:63%;left:11%;font-size:1.1rem;opacity:0.22;animation:f3 13.5s ease-in-out infinite;animation-delay:-6s;">&#129716;</span>
+  <span class="p" style="top:41%;right:5%;font-size:1.9rem;opacity:0.32;animation:f4 8s ease-in-out infinite;animation-delay:-4s;">&#128715;</span>
+  <span class="p" style="top:63%;right:13%;font-size:1.05rem;opacity:0.20;animation:f6 11.5s ease-in-out infinite;animation-delay:-8s;">&#128149;</span>
+  <span class="p" style="bottom:14%;left:8%;font-size:1.5rem;opacity:0.30;animation:f2 9s ease-in-out infinite;animation-delay:-1.8s;">&#127960;</span>
+  <span class="p" style="bottom:12%;right:10%;font-size:1.6rem;opacity:0.28;animation:f1 7.5s ease-in-out infinite;animation-delay:-4.5s;">&#127807;</span>
+  <span class="p" style="bottom:25%;left:25%;font-size:0.85rem;opacity:0.12;animation:f5 15s ease-in-out infinite;animation-delay:-9s;">&#10024;</span>
+  <span class="p" style="bottom:22%;right:27%;font-size:0.85rem;opacity:0.12;animation:f3 12.5s ease-in-out infinite;animation-delay:-10s;">&#128171;</span>
+  <span class="p" style="bottom:8%;left:42%;font-size:1rem;opacity:0.16;animation:f6 10s ease-in-out infinite;animation-delay:-3s;">&#128716;</span>
+  <div class="centre">
+    <div class="badge">&#10003;&nbsp;&nbsp;All set</div>
+    <div class="intro">You've told us everything we need.</div>
+    <div class="big">Your flat</div>
+    <div class="big-grad">is waiting.</div>
+    <p class="sub">We're matching every active listing to your priorities right now.</p>
+  </div>
+</div>
+</body>
+</html>""",
+        height=435,
+        scrolling=False,
+    )
+    # Button fades in last — same fadeUp, fires after sub finishes (~3.6s)
+    st.markdown(
+        """
+        <style>
+        @keyframes _btnFadeUp {
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        div[data-testid="stButton"] button[kind="primary"] {
+            opacity: 0;
+            animation: _btnFadeUp 1.1s cubic-bezier(0.25,1,0.5,1) 3.0s forwards;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    col = st.columns([1, 2, 1])[1]
+    with col:
+        if st.button("Show me my flats →", key="done_cta", type="primary", use_container_width=True):
+            return True
+    return False
 
 
 def build_inputs_from_prefs() -> UserInputs:
@@ -907,16 +1047,6 @@ def build_inputs_from_prefs() -> UserInputs:
     raw_sqm = st.session_state.get("pref_floor_area")
     floor_area_sqm = float(raw_sqm) if raw_sqm is not None else None
 
-    priority_mode = st.session_state.get("pref_priority_mode", "balanced")
-
-    priority_to_ranking_profile = {
-        "save_money": "value-first",
-        "convenience": "amenity-first",
-        "balanced": "balanced",
-    }
-
-    ranking_profile = priority_to_ranking_profile.get(priority_mode, "balanced")
-
     return UserInputs(
         budget=st.session_state.get("pref_budget") if not st.session_state.get("pref_budget_flexible") else None,
         flat_types=st.session_state.get("pref_flat_types") or ["4 ROOM"],
@@ -927,7 +1057,6 @@ def build_inputs_from_prefs() -> UserInputs:
         amenity_weights=amenity_weights,
         amenity_rank=rank,
         landmark_postals=[],
-        ranking_profile=ranking_profile,
     )
 
 
