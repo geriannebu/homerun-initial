@@ -409,7 +409,7 @@ def _render_summary_cards(selected_df):
 
 
 def _source_legend_label(row):
-    source = row.get("comparison_source", "Saved flat")
+    source = row.get("comparison_source", "Discover")
     flat_type = row.get("flat_type", "Flat")
     town = row.get("town", "Unknown")
     return f"{source} ({flat_type} at {town})"
@@ -475,7 +475,7 @@ def _render_listing_score_cards(selected_df):
                     st.write(f"**Remaining Lease:** {row.get('remaining_lease_years')} years")
 
                 if "comparison_source" in row:
-                    source = row.get("comparison_source", "Saved flat")
+                    source = row.get("comparison_source", "Discover")
                     st.write(f"**Source:** {source}")
 
                 st.divider()
@@ -743,9 +743,9 @@ def render_comparison_page(inputs, listings_df: pd.DataFrame):
     if not listings_df.empty:
         real_df = listings_df.copy()
         if "comparison_source" not in real_df.columns:
-            real_df["comparison_source"] = "Saved flat"
+            real_df["comparison_source"] = "Discover"
         else:
-            real_df["comparison_source"] = real_df["comparison_source"].fillna("Saved flat")
+            real_df["comparison_source"] = real_df["comparison_source"].fillna("Discover")
         frames.append(real_df)
 
     if not custom_df.empty:
@@ -755,9 +755,9 @@ def render_comparison_page(inputs, listings_df: pd.DataFrame):
     selected_df = _prepare_comparison_scores(selected_df, inputs)
 
     if "comparison_source" not in selected_df.columns:
-        selected_df["comparison_source"] = "Saved flat"
+        selected_df["comparison_source"] = "Discover"
     else:
-        selected_df["comparison_source"] = selected_df["comparison_source"].fillna("Saved flat")
+        selected_df["comparison_source"] = selected_df["comparison_source"].fillna("Discover")
 
     selected_df = selected_df.sort_values("overall_score", ascending=False).reset_index(drop=True)
 

@@ -62,7 +62,7 @@ def get_logo_img_tag(height: int = 40, use_icon: bool = False) -> str:
 
 
 from frontend.styles.css import inject_css
-from frontend.state.session import init_session_state, create_search_session
+from frontend.state.session import init_session_state, create_search_session, get_active_session
 
 from frontend.components.onboarding import (
     render_onboarding,
@@ -76,6 +76,8 @@ from frontend.pages.flat_outputs.best_matches import render_listing_tab
 from frontend.pages.saved import render_saved_page
 from frontend.pages.comparison_tool import render_comparison_page
 from frontend.pages.account import render_account_page
+from frontend.pages.explore import render_explore_page
+from data.load_data import load_all_data
 
 
 st.set_page_config(
@@ -85,7 +87,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-PAGES = ["Discover", "Saved", "Compare", "Account"]
+PAGES = ["Discover", "Saved", "Compare", "Explore", "Account"]
 
 
 # ── Auth dialog ───────────────────────────────────────────────────────────────
@@ -186,8 +188,11 @@ def main():
         render_saved_page()
     elif page == "Compare":
         _render_compare()
+    elif page == "Explore":
+        _render_explore()
     elif page == "Account":
         render_account_page()
+   
 
 
 # ── Landing page ──────────────────────────────────────────────────────────────
@@ -499,7 +504,7 @@ html,body{font-family:'DM Sans',-apple-system,sans-serif;background:#fff;}
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
-_PAGE_ICONS = {"Discover": "🔥", "Saved": "♥", "Compare": "⚖️", "Account": "👤"}
+_PAGE_ICONS = {"Discover": "🔥", "Saved": "♥", "Compare": "⚖️", "Explore": "🔎", "Account": "👤"}
 
 
 def _render_sidebar():
@@ -794,18 +799,37 @@ def _render_compare():
 
     selected_ids = st.session_state.get("compare_selected_ids", [])
 
-    liked_df = get_active_session_liked_df()
-    compare_df = pd.DataFrame()
-
-    if not liked_df.empty and selected_ids:
-        compare_df = liked_df[liked_df["listing_id"].isin(selected_ids)].copy()
-
     session = get_active_session()
     if session is None:
         st.error("No active session found.")
         return
 
+    liked_df = get_active_session_liked_df()
+
+    extra_rows = session.get("extra_saved_rows", [])
+    if extra_rows:
+        extra_df = pd.DataFrame(extra_rows)
+        liked_df = pd.concat([liked_df, extra_df], ignore_index=True, sort=False)
+
+    compare_df = pd.DataFrame()
+    if not liked_df.empty and selected_ids:
+        compare_df = liked_df[
+            liked_df["listing_id"].astype(str).isin([str(x) for x in selected_ids])
+        ].copy()
+
     render_comparison_page(inputs=session["inputs"], listings_df=compare_df)
     
+def _render_explore():
+
+    session = get_active_session()
+    inputs = session["inputs"] if session else None
+
+    try:
+        full_df, _ = load_all_data()
+    except Exception:
+        full_df = pd.DataFrame()
+
+    render_explore_page(inputs=inputs, listings_df=full_df)
+
 if __name__ == "__main__":
     main()

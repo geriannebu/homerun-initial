@@ -185,10 +185,6 @@ def render_listing_tab(listings_df: pd.DataFrame):
     else:
         session["passed_ids"] = [str(x) for x in session["passed_ids"]]
 
-    if session.get("super_ids") is None:
-        session["super_ids"] = []
-    else:
-        session["super_ids"] = [str(x) for x in session["super_ids"]]
 
     unseen_ids = session["unseen_ids"]
     liked_ids = session["liked_ids"]
@@ -282,7 +278,6 @@ def _render_swipe_controls(session_id: str, listing_id: str | None):
 
 def _render_deck_done(session: dict, listings_df: pd.DataFrame):
     liked = session["liked_ids"]
-    supers = session["super_ids"]
     passed = session["passed_ids"]
 
     st.markdown(
@@ -297,10 +292,6 @@ def _render_deck_done(session: dict, listings_df: pd.DataFrame):
                 <div>
                     <div style="font-size:2rem;font-weight:800;color:#059E87;">{len(liked)}</div>
                     <div style="font-size:0.72rem;color:#9ca3af;font-weight:600;">Saved</div>
-                </div>
-                <div>
-                    <div style="font-size:2rem;font-weight:800;color:#d97706;">{len(supers)}</div>
-                    <div style="font-size:0.72rem;color:#9ca3af;font-weight:600;">Super-saved</div>
                 </div>
                 <div>
                     <div style="font-size:2rem;font-weight:800;color:#9ca3af;">{len(passed)}</div>
@@ -323,7 +314,6 @@ def _render_deck_done(session: dict, listings_df: pd.DataFrame):
                 if s["session_id"] == session["session_id"]:
                     s["unseen_ids"] = list(listings_df["listing_id"].astype(str).values)
                     s["liked_ids"] = []
-                    s["super_ids"] = []
                     s["passed_ids"] = []
             st.rerun()
 
