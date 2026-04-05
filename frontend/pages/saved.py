@@ -6,16 +6,70 @@ Users can click "View details" for full amenity/score breakdown,
 select flats for comparison, or remove them.
 """
 
+import html
 import pandas as pd
 import streamlit as st
 import pydeck as pdk
 import numpy as np
+
 from backend.services.map_service import mock_listing_points
 from backend.utils.formatters import fmt_sgd, valuation_tag_html
 from frontend.state.session import get_active_session_liked_df, get_active_session
 from frontend.components.listing_detail import show_listing_detail
 from backend.utils.constants import AMENITY_COLORS, AMENITY_LABELS
 from frontend.pages.flat_outputs.map_view import top_priority_keys, add_nearest_amenity_distances
+
+
+def _normalize_amenity_key(key: str) -> str:
+    mapping = {
+        "mall": "retail",
+        "shopping_mall": "retail",
+        "polyclinic": "healthcare",
+        "clinic": "healthcare",
+        "hospital": "healthcare",
+        "train": "mrt",
+        "station": "mrt",
+        "school": "schools",
+    }
+    return mapping.get(str(key).strip().lower(), str(key).strip().lower())
+
+
+def _safe_amenity_label(key: str) -> str:
+    key = _normalize_amenity_key(key)
+    return AMENITY_LABELS.get(key, key.replace("_", " ").title())
+
+
+def _safe_amenity_color(key: str):
+    key = _normalize_amenity_key(key)
+    return AMENITY_COLORS.get(key, [120, 120, 120, 180])
+
+
+def _safe_text(value, fallback="—"):
+    if value is None:
+        return fallback
+    try:
+        if pd.isna(value):
+            return fallback
+    except Exception:
+        pass
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return fallback
+    return text
+
+
+def _safe_currency(value):
+    return fmt_sgd(value) if pd.notna(value) else "—"
+
+
+def _safe_pct_text(value):
+    if pd.notna(value):
+        return f"{float(value):+.1f}% vs model"
+    return ""
+
+
+def _escape(value):
+    return html.escape(str(value))
 
 
 def _render_saved_section(section_df: pd.DataFrame, section_title: str, selected_ids: list[str]):
@@ -32,14 +86,16 @@ def _render_saved_section(section_df: pd.DataFrame, section_title: str, selected
     )
 
     for idx, row in section_df.reset_index(drop=True).iterrows():
-        lid = str(row["listing_id"])
+        lid = str(row.get("listing_id", ""))
         session_id = str(row.get("session_id", "na"))
         is_sel = lid in selected_ids
-        valuation_label = row.get("valuation_label", "")
-        tag = valuation_tag_html(valuation_label) if valuation_label else ""
+
+        valuation_label = _safe_text(row.get("valuation_label"), "")
+        tag_html = valuation_tag_html(valuation_label) if valuation_label else ""
 
         diff_raw = row.get("asking_vs_predicted_pct", row.get("valuation_pct", np.nan))
         diff = float(diff_raw) if pd.notna(diff_raw) else np.nan
+
         badge = "♥ Saved"
         badge_col = "#059E87"
 
@@ -48,50 +104,74 @@ def _render_saved_section(section_df: pd.DataFrame, section_title: str, selected
 
         card_title = row.get("address")
         if pd.isna(card_title) or not str(card_title).strip():
-            card_title = row.get("listing_id", "")
+            card_title = row.get("listing_id", "Unknown listing")
+        card_title = _escape(card_title)
 
-        flat_type = row.get("flat_type", "—")
+        flat_type = _safe_text(row.get("flat_type"))
         area = row.get("floor_area_sqm", np.nan)
-        storey = row.get("storey_range", "")
 
-        meta_parts = [str(flat_type) if pd.notna(flat_type) and str(flat_type).strip() else "—"]
+        storey = row.get("storey_range")
+        if pd.isna(storey) or not str(storey).strip() or str(storey).strip().lower() == "nan":
+            storey = row.get("floor_level_text", "")
+
+        meta_parts = [flat_type]
         if pd.notna(area):
-            meta_parts.append(f"{area} sqm")
-        if str(storey).strip():
-            meta_parts.append(f"Storey {storey}")
+            try:
+                meta_parts.append(f"{float(area):.1f} sqm")
+            except Exception:
+                meta_parts.append(f"{area} sqm")
+
+        storey_text = _safe_text(storey, "")
+        if storey_text and storey_text != "—":
+            if storey_text.lower().startswith("storey"):
+                meta_parts.append(storey_text)
+            else:
+                meta_parts.append(f"Storey {storey_text}")
+
         meta_text = " · ".join(meta_parts)
 
-        asking_display = fmt_sgd(row.get("asking_price")) if pd.notna(row.get("asking_price")) else "—"
-        predicted_display = fmt_sgd(row.get("predicted_price")) if pd.notna(row.get("predicted_price")) else "—"
+        asking_value = row.get("asking_price", row.get("price"))
+        predicted_value = row.get("predicted_price")
 
-        st.markdown(
-            f"""
-            <div class="nw-listing" style="border:{border};background:{bg};">
-                <div class="nw-listing-header">
-                    <div>
-                        <div class="nw-listing-id">{card_title}</div>
-                        <div class="nw-listing-meta">{meta_text}</div>
-                    </div>
-                    <div>
-                        <div class="nw-listing-asking">{asking_display}</div>
-                        <div class="nw-listing-predicted">
-                            Predicted: {predicted_display}
-                        </div>
-                    </div>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;
-                            margin-top:8px;flex-wrap:wrap;">
-                    {tag}
-                    <span style="font-size:0.76rem;color:#9ca3af;">{"{:+.1f}% vs model".format(diff) if pd.notna(diff) else ""}</span>
-                    <span style="font-size:0.72rem;font-weight:700;
-                        color:{badge_col};margin-left:auto;">{badge}</span>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        asking_display = _safe_currency(asking_value)
+        predicted_display = _safe_currency(predicted_value)
+        diff_text = _safe_pct_text(diff)
+
+        card_html = (
+            f"<div style='border:{border};background:{bg};border-radius:16px;padding:16px;margin-bottom:10px;"
+            f"box-shadow:0 2px 10px rgba(0,0,0,0.04);'>"
+                f"<div style='display:flex;justify-content:space-between;align-items:flex-start;gap:16px;'>"
+                    f"<div style='min-width:0;flex:1;'>"
+                        f"<div style='font-size:1rem;font-weight:800;color:#0f172a;line-height:1.35;'>"
+                            f"{card_title}"
+                        f"</div>"
+                        f"<div style='font-size:0.82rem;color:#6b7280;margin-top:4px;'>"
+                            f"{_escape(meta_text)}"
+                        f"</div>"
+                    f"</div>"
+                    f"<div style='text-align:right;flex-shrink:0;'>"
+                        f"<div style='font-size:1.1rem;font-weight:800;color:#0f172a;'>"
+                            f"{asking_display}"
+                        f"</div>"
+                        f"<div style='font-size:0.82rem;color:#6b7280;margin-top:4px;'>"
+                            f"Predicted: {predicted_display}"
+                        f"</div>"
+                    f"</div>"
+                f"</div>"
+                f"<div style='display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;'>"
+                    f"{tag_html}"
+                    f"<span style='font-size:0.76rem;color:#9ca3af;'>{_escape(diff_text)}</span>"
+                    f"<span style='font-size:0.72rem;font-weight:700;color:{badge_col};margin-left:auto;'>"
+                        f"{badge}"
+                    f"</span>"
+                f"</div>"
+            f"</div>"
         )
 
+        st.markdown(card_html, unsafe_allow_html=True)
+
         btn_a, btn_b, btn_c = st.columns([1.2, 0.9, 0.9])
+
         with btn_a:
             if st.button(
                 "View details →",
@@ -142,6 +222,7 @@ def _render_saved_section(section_df: pd.DataFrame, section_title: str, selected
 def render_saved_page():
     session = get_active_session()
     liked_df = get_active_session_liked_df()
+
     extra_rows = []
     if session:
         extra_rows = session.get("extra_saved_rows", [])
@@ -167,6 +248,7 @@ def render_saved_page():
 
     if liked_df.empty:
         import streamlit.components.v1 as components
+
         components.html(
             """<!DOCTYPE html>
 <html lang="en">
@@ -273,7 +355,6 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
             st.rerun()
 
     st.markdown("---")
-
     st.markdown("#### Saved flats map")
 
     with st.expander("View saved flats map", expanded=False):
@@ -288,8 +369,13 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
 
         if latest_inputs is not None and latest_map_bundle is not None:
             visible = top_priority_keys(latest_inputs.amenity_weights, 3)
-            visible = ["retail" if k == "mall" else k for k in visible]
+            visible = [_normalize_amenity_key(k) for k in visible]
+            visible = list(dict.fromkeys(visible))
             amenities_df = latest_map_bundle.get("amenities_df", pd.DataFrame())
+
+            if not amenities_df.empty and "amenity_type" in amenities_df.columns:
+                amenities_df = amenities_df.copy()
+                amenities_df["amenity_type"] = amenities_df["amenity_type"].apply(_normalize_amenity_key)
 
         if saved_points is not None and not saved_points.empty:
             if not amenities_df.empty and visible:
@@ -300,18 +386,22 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
 
             def saved_tooltip(r):
                 lines = [
-                    f"<b>{r['listing_id']}</b>",
-                    f"<b>Town:</b> {r['town']}",
-                    f"<b>Type:</b> {r['flat_type']}",
+                    f"<b>{_escape(r.get('listing_id', 'Unknown listing'))}</b>",
+                    f"<b>Town:</b> {_escape(r.get('town', '—'))}",
+                    f"<b>Type:</b> {_escape(r.get('flat_type', '—'))}",
                 ]
+
                 if pd.notna(r.get("asking_price")):
                     lines.append(f"<b>Asking price:</b> ${int(r['asking_price']):,}")
+                elif pd.notna(r.get("price")):
+                    lines.append(f"<b>Asking price:</b> ${int(r['price']):,}")
 
                 for amenity_type in visible:
                     col = f"nearest_{amenity_type}_km"
-                    label_key = "retail" if amenity_type == "mall" else amenity_type
                     if col in r and r[col] != "":
-                        lines.append(f"<b>Nearest {AMENITY_LABELS.get(label_key, amenity_type.replace('_', ' ').title())}:</b> {r[col]} km")
+                        lines.append(
+                            f"<b>Nearest {_escape(_safe_amenity_label(amenity_type))}:</b> {_escape(r[col])} km"
+                        )
 
                 return "<br/>".join(lines)
 
@@ -327,12 +417,15 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                     sub = filtered_amenities[filtered_amenities["amenity_type"] == amenity_type]
                     if not sub.empty:
                         sub = sub.copy()
+                        amenity_label = _safe_amenity_label(amenity_type)
+                        amenity_color = _safe_amenity_color(amenity_type)
+
                         sub["tooltip_html"] = sub.apply(
                             lambda r: (
-                                f"<b>{AMENITY_LABELS[amenity_type]}</b><br/>"
-                                f"<b>Town:</b> {r['town']}<br/>"
-                                f"<b>Name:</b> {r['amenity_label']}<br/>"
-                                f"<b>Postal code:</b> {r['postal_code']}"
+                                f"<b>{_escape(amenity_label)}</b><br/>"
+                                f"<b>Town:</b> {_escape(r.get('town', '—'))}<br/>"
+                                f"<b>Name:</b> {_escape(r.get('amenity_label', '—'))}<br/>"
+                                f"<b>Postal code:</b> {_escape(r.get('postal_code', '—'))}"
                             ),
                             axis=1,
                         )
@@ -342,7 +435,7 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                                 "ScatterplotLayer",
                                 data=sub,
                                 get_position="[lon, lat]",
-                                get_fill_color=AMENITY_COLORS[amenity_type],
+                                get_fill_color=amenity_color,
                                 get_radius=260,
                                 pickable=True,
                             )
@@ -386,11 +479,12 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                 if dist_cols:
                     summary = saved_points[["listing_id", "town"] + dist_cols].copy()
                     rename_map = {"listing_id": "Listing ID", "town": "Town"}
+
                     for k in visible:
                         col = f"nearest_{k}_km"
-                        label_key = "retail" if k == "mall" else k
                         if col in summary.columns:
-                            rename_map[col] = f"Nearest {AMENITY_LABELS.get(label_key, k.replace('_', ' ').title())} (km)"
+                            rename_map[col] = f"Nearest {_safe_amenity_label(k)} (km)"
+
                     summary = summary.rename(columns=rename_map)
 
                     st.markdown("**Nearest amenity distances**")
