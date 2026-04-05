@@ -104,6 +104,6 @@ def render_homerun_pick(inputs: UserInputs, bundle: Dict[str,Any]):
             else:
                 closeness = "Far"
 
-            st.write(f"• {AMENITY_LABELS[amen]}: {closeness} ({float(distance):.0f} min walk, score: {float(score)*100:.0f}/100)")
+            st.write(f"• {AMENITY_LABELS[amen]}: {closeness} ({distance:.0f} min walk, score: {score:.2f})")
 
         

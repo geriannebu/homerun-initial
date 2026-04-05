@@ -250,6 +250,11 @@ def render_listing_tab(listings_df: pd.DataFrame):
             f'font-size:0.76rem;font-weight:600;color:#334155;background:#fff;">'
             f'{icon} {label}</span>'
         )
+
+    st.caption(
+        "Overall nearby access to each amenity type, not just the nearest amenity: "
+    )
+
     st.markdown(
         f'<div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 14px 0;">{badges}</div>',
         unsafe_allow_html=True,
@@ -347,6 +352,7 @@ def _build_single_card_html(card_json: str) -> str:
 
     area_sqft = card.get("area_sqft", 0)
     storey = card.get("storey") or "-"
+    remaining_lease = card.get("remaining_lease") or "-"
     diff_pct = float(card.get("diff_pct", 0))
 
     return f"""
@@ -577,6 +583,7 @@ def _build_single_card_html(card_json: str) -> str:
                         <div class="meta">
                             <div class="pill">📐 {area_sqft} sqft</div>
                             <div class="pill">🏢 {storey}</div>
+                            <div class="pill">⏳ {remaining_lease}</div>
                             <div class="pill">💹 {diff_pct:+.1f}% vs model</div>
                         </div>
 

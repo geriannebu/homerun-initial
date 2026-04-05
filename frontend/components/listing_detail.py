@@ -514,7 +514,7 @@ def show_listing_detail(payload: Dict[str, Any] | str | int, show_actions: bool 
     <div>
     <div>Overall access score</div>
     <div style="font-size:0.62rem;font-weight:600;text-transform:none;letter-spacing:0;color:#cbd5e1;">
-        based on nearby options
+        based on walking times to nearby options
     </div>
 </div>
 </div>
