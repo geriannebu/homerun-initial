@@ -12,12 +12,14 @@ Flow:
   9  Done → triggers search
 """
 
+import copy
 import streamlit as st
 import streamlit.components.v1 as components
 
 from backend.utils.constants import FLAT_TYPES, TOWNS, AMENITY_LABELS
 from backend.services.quiz import render_quiz, reset_quiz, seed_quiz_from_existing_preferences
 from backend.schemas.inputs import UserInputs
+from frontend.state.user_store import save_user_store_from_session
 from textwrap import dedent
 
 HAS_SORTABLES = False
@@ -78,6 +80,27 @@ AMENITY_KEY_MAP = {
     "polyclinic": "polyclinic",
     "primary_school": "primary_school",
 }
+
+PREFERENCE_SESSION_KEYS = [
+    "pref_budget",
+    "pref_budget_flexible",
+    "pref_flat_type",
+    "pref_flat_types",
+    "pref_floor_area",
+    "pref_floor_area_sqft",
+    "pref_floor_area_sqft_manual",
+    "pref_floor_area_skip",
+    "pref_remaining_lease",
+    "pref_town",
+    "pref_school_scope",
+    "pref_priority_mode",
+    "pref_amenity_rank",
+    "pref_amenity_weights",
+    "pref_quiz_scores",
+    "pref_selected_amenities",
+    "pref_rank_manually_adjusted",
+    "pref_landmark_postals",
+]
 
 
 def _progress_bar(step: int):
@@ -1094,10 +1117,9 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
 
 def build_inputs_from_prefs() -> UserInputs:
     rank = st.session_state.get("pref_amenity_rank") or list(FRONTEND_AMENITY_LABELS.keys())
-    amenity_weights = st.session_state.get("pref_amenity_weights")
-
-    if not amenity_weights:
-        amenity_weights = _build_rank_based_weights(rank, st.session_state.get("pref_selected_amenities") or rank)
+    selected_amenities = st.session_state.get("pref_selected_amenities") or rank
+    amenity_weights = _build_rank_based_weights(rank, selected_amenities)
+    st.session_state["pref_amenity_weights"] = amenity_weights
 
     for key in FRONTEND_AMENITY_LABELS:
         if key not in amenity_weights:
@@ -1128,6 +1150,78 @@ def build_inputs_from_prefs() -> UserInputs:
         landmark_postals=[],
         ranking_profile=ranking_profile,
     )
+
+
+def collect_preferences_from_session() -> dict:
+    preferences = {}
+    for key in PREFERENCE_SESSION_KEYS:
+        if key in st.session_state:
+            preferences[key] = copy.deepcopy(st.session_state.get(key))
+
+    if not preferences.get("pref_flat_types"):
+        flat_type = preferences.get("pref_flat_type")
+        if flat_type:
+            preferences["pref_flat_types"] = [flat_type]
+
+    if not preferences.get("pref_flat_type"):
+        flat_types = preferences.get("pref_flat_types") or []
+        if len(flat_types) == 1:
+            preferences["pref_flat_type"] = flat_types[0]
+
+    return preferences
+
+
+def clear_preferences_from_session():
+    for key in PREFERENCE_SESSION_KEYS:
+        st.session_state.pop(key, None)
+
+
+def apply_preferences_to_session(preferences: dict | None):
+    clear_preferences_from_session()
+
+    if not preferences:
+        st.session_state.onboarding_complete = False
+        return False
+
+    for key, value in preferences.items():
+        st.session_state[key] = copy.deepcopy(value)
+
+    if not st.session_state.get("pref_flat_types"):
+        flat_type = st.session_state.get("pref_flat_type")
+        if flat_type:
+            st.session_state.pref_flat_types = [flat_type]
+
+    if not st.session_state.get("pref_flat_type"):
+        flat_types = st.session_state.get("pref_flat_types") or []
+        if len(flat_types) == 1:
+            st.session_state.pref_flat_type = flat_types[0]
+
+    st.session_state.onboarding_complete = bool(st.session_state.get("pref_amenity_rank"))
+    return True
+
+
+def persist_current_preferences_for_user(user: str | None = None):
+    user = user or st.session_state.get("current_user")
+    if not user or user == "__guest__":
+        return
+
+    users = st.session_state.get("users", {})
+    if user not in users:
+        return
+
+    users[user]["preferences"] = collect_preferences_from_session()
+    save_user_store_from_session()
+
+
+def restore_preferences_for_user(user: str | None = None):
+    user = user or st.session_state.get("current_user")
+    if not user or user == "__guest__":
+        clear_preferences_from_session()
+        st.session_state.onboarding_complete = False
+        return False
+
+    preferences = st.session_state.get("users", {}).get(user, {}).get("preferences")
+    return apply_preferences_to_session(preferences)
 
 
 def get_preferences_display() -> dict:

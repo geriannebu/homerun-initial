@@ -4,7 +4,6 @@ import pandas as pd
 import streamlit as st
 
 from backend.utils.formatters import fmt_sgd, valuation_tag_html
-from backend.utils.scoring import compute_listing_scores
 from frontend.components.listing_detail import show_listing_detail
 
 
@@ -267,20 +266,6 @@ def _render_flat_snapshot(row: pd.Series):
     st.markdown(card_html, unsafe_allow_html=True)
 
 
-def _enrich_explore_row(row_dict: dict, inputs):
-    one_row_df = pd.DataFrame([row_dict])
-
-    try:
-        scored_df = compute_listing_scores(
-            listings_df=one_row_df,
-            budget=getattr(inputs, "budget", None) if inputs is not None else None,
-            amenity_weights=getattr(inputs, "amenity_weights", {}) if inputs is not None else {},
-            ranking_profile=getattr(inputs, "ranking_profile", "balanced") if inputs is not None else "balanced",
-        )
-        return scored_df.iloc[0].to_dict()
-    except Exception:
-        return row_dict
-
 
 def _estimate_hypothetical_amenities(result: dict, listings_df: pd.DataFrame) -> dict:
     if listings_df is None or listings_df.empty:
@@ -407,34 +392,6 @@ _SPATIAL_COLS = [
     "num_bus_within_400m", "dist_cbd",
 ]
 
-_AMENITY_DIST_COLS = {
-    "train_1_dist_m":       "mrt",
-    "bus_1_dist_m":         "bus",
-    "school_1_dist_m":      "schools",
-    "hawker_1_dist_m":      "hawker",
-    "mall_1_dist_m":        "retail",
-    "polyclinic_1_dist_m":  "healthcare",
-    "supermarket_1_dist_m": "supermarket",
-}
-
-
-def _dist_score(dist_m) -> int:
-    """Replicate scoring.py _distance_score for a single distance value."""
-    try:
-        d = float(dist_m)
-        if np.isnan(d):
-            return 40
-    except (TypeError, ValueError):
-        return 40
-    if d <= 300:
-        return 90
-    elif d <= 600:
-        return 75
-    elif d <= 1000:
-        return 60
-    return 40
-
-
 def _compute_block_spatial_features(addr_df: pd.DataFrame) -> dict:
     """
     Extract spatial feature values for a block from feature_df.
@@ -450,24 +407,6 @@ def _compute_block_spatial_features(addr_df: pd.DataFrame) -> dict:
             if pd.notna(val):
                 out[col] = float(val)
     return out
-
-
-def _compute_amenity_score_from_distances(spatial: dict) -> dict:
-    """
-    Given a spatial features dict (from _compute_block_spatial_features),
-    compute distance-bracket amenity scores matching scoring.py logic.
-    Returns a dict with individual scores and overall amenity_score.
-    """
-    scores = {}
-    raw_scores = []
-    for dist_col, key in _AMENITY_DIST_COLS.items():
-        if dist_col in spatial:
-            s = _dist_score(spatial[dist_col])
-            scores[f"{key}_score"] = s
-            raw_scores.append(s)
-    if raw_scores:
-        scores["amenity_score"] = round(float(np.mean(raw_scores)), 1)
-    return scores
 
 
 def _build_hypothetical_result_row(result: dict) -> dict:
@@ -515,10 +454,6 @@ def _build_hypothetical_result_row(result: dict) -> dict:
         "walk_train_min1", "walk_bus_min1", "walk_primary_school_min1",
         "walk_hawker_min1", "walk_mall_min1", "walk_polyclinic_min1",
         "walk_supermarket_min1",
-        # pre-computed scores from _compute_amenity_score_from_distances
-        "amenity_score",
-        "mrt_score", "bus_score", "schools_score",
-        "hawker_score", "retail_score", "healthcare_score", "supermarket_score",
     ]
 
     for col in passthrough_cols:
@@ -917,7 +852,6 @@ def _render_flat_lookup(inputs, feature_df: pd.DataFrame):
             )
             # Attach real spatial distances and computed amenity scores to result
             result.update(spatial)
-            result.update(_compute_amenity_score_from_distances(spatial))
             result["_lookup_addr"] = selected_addr
             result["_lookup_ft"] = selected_flat_type
             st.session_state[result_key] = result

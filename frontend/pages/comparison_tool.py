@@ -473,6 +473,16 @@ def render_comparison_page(inputs, listings_df: pd.DataFrame):
     else:
         selected_df["comparison_source"] = selected_df["comparison_source"].fillna("Discover")
 
+    selected_df = selected_df[selected_df["comparison_source"] != "Explore"].copy()
+    st.session_state.compare_selected_ids = [
+        lid for lid in st.session_state.get("compare_selected_ids", [])
+        if lid in set(selected_df.get("listing_id", pd.Series(dtype=str)).astype(str))
+    ]
+
+    if selected_df.empty:
+        st.info("No flats selected yet. Go to Saved to pick flats.")
+        return
+
     selected_df = _prepare_comparison_scores(selected_df, inputs)
     selected_df = selected_df.sort_values("overall_score", ascending=False).reset_index(drop=True)
 

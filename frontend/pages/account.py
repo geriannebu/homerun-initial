@@ -14,12 +14,16 @@ Saving any edit:
 
 import streamlit as st
 
+from frontend.state.user_store import save_user_store_from_session
 from frontend.components.onboarding import (
     build_inputs_from_prefs,
+    clear_preferences_from_session,
     get_preferences_display,
     AMENITY_ICONS,
     FLAT_TYPE_LABELS,
     FLAT_ICONS,
+    persist_current_preferences_for_user,
+    restore_preferences_for_user,
 )
 from backend.utils.constants import AMENITY_LABELS, FLAT_TYPES, TOWNS
 
@@ -75,6 +79,7 @@ def _render_auth():
                 users = st.session_state.users
                 if email in users and users[email]["password"] == password:
                     st.session_state.current_user = email
+                    restore_preferences_for_user(email)
                     st.success(f"Welcome back, {email}!")
                     st.rerun()
                 else:
@@ -94,8 +99,11 @@ def _render_auth():
                 elif new_email in st.session_state.users:
                     st.warning("An account with this email already exists.")
                 else:
-                    st.session_state.users[new_email] = {"password": new_password}
+                    st.session_state.users[new_email] = {"password": new_password, "preferences": {}}
                     st.session_state.user_histories[new_email] = []
+                    save_user_store_from_session()
+                    clear_preferences_from_session()
+                    st.session_state.onboarding_complete = False
                     st.success("Account created — you can now log in! 🎉")
 
 
@@ -148,9 +156,12 @@ def _render_guest():
                 elif new_email in st.session_state.users:
                     st.warning("An account with this email already exists.")
                 else:
-                    st.session_state.users[new_email] = {"password": new_password}
+                    st.session_state.users[new_email] = {"password": new_password, "preferences": {}}
                     st.session_state.user_histories[new_email] = []
+                    save_user_store_from_session()
                     st.session_state.current_user = new_email
+                    clear_preferences_from_session()
+                    st.session_state.onboarding_complete = False
                     st.rerun()
 
         with login_tab:
@@ -166,6 +177,7 @@ def _render_guest():
                 users = st.session_state.users
                 if email in users and users[email]["password"] == password:
                     st.session_state.current_user = email
+                    restore_preferences_for_user(email)
                     st.rerun()
                 else:
                     st.error("Incorrect email or password.")
@@ -285,6 +297,7 @@ def _save_and_regenerate():
 
     with st.spinner("Generating your new deck…"):
         inputs     = build_inputs_from_prefs()
+        persist_current_preferences_for_user()
         bundle     = get_prediction_bundle(inputs)
         map_bundle = get_map_bundle(inputs, bundle["recommendations_df"])
 
@@ -319,13 +332,15 @@ def _pref_row_budget():
 
 
 def _pref_row_flat_type():
-    val   = st.session_state.get("pref_flat_type") or "4 ROOM"
+    val   = (st.session_state.get("pref_flat_type")
+             or (st.session_state.get("pref_flat_types") or ["4 ROOM"])[0])
     label = FLAT_TYPE_LABELS.get(val, val)
     open_ = _row_header("Flat type", label, "flat_type")
     if not open_:
         return
 
-    current = st.session_state.get("pref_flat_type") or "4 ROOM"
+    current = (st.session_state.get("pref_flat_type")
+               or (st.session_state.get("pref_flat_types") or ["4 ROOM"])[0])
     cols = st.columns(len(FLAT_TYPES))
     for i, ft in enumerate(FLAT_TYPES):
         selected = current == ft
@@ -345,6 +360,7 @@ def _pref_row_flat_type():
             if st.button(FLAT_TYPE_LABELS[ft], key=f"edit_ft_{ft}",
                          use_container_width=True):
                 st.session_state.pref_flat_type = ft
+                st.session_state.pref_flat_types = [ft]
                 _save_and_regenerate()
 
 
@@ -468,6 +484,7 @@ def _pref_row_amenity_rank():
             with c2:
                 if st.button("✕", key=f"rm_rank_{key}_{i}"):
                     st.session_state.pref_amenity_rank = rank[:i]
+                    st.session_state.pref_amenity_weights = {}
                     st.rerun()
 
     if remaining:
@@ -486,6 +503,7 @@ def _pref_row_amenity_rank():
                              use_container_width=True):
                     new_rank = (st.session_state.pref_amenity_rank or []) + [key]
                     st.session_state.pref_amenity_rank = new_rank
+                    st.session_state.pref_amenity_weights = {}
                     st.rerun()
 
     if len(rank) == len(all_keys):
@@ -636,6 +654,8 @@ def _render_settings(user: str):
 
     if st.button("Log out", use_container_width=False):
         st.session_state.current_user = None
+        clear_preferences_from_session()
+        st.session_state.onboarding_complete = False
         st.rerun()
 
     st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)

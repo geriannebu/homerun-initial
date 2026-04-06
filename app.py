@@ -63,10 +63,14 @@ def get_logo_img_tag(height: int = 40, use_icon: bool = False) -> str:
 
 from frontend.styles.css import inject_css
 from frontend.state.session import init_session_state, create_search_session, get_active_session
+from frontend.state.user_store import load_user_store_into_session, save_user_store_from_session
 
 from frontend.components.onboarding import (
+    clear_preferences_from_session,
     render_onboarding,
     build_inputs_from_prefs,
+    restore_preferences_for_user,
+    persist_current_preferences_for_user,
 )
 
 from backend.services.predictor_service import get_prediction_bundle
@@ -124,9 +128,12 @@ def _show_auth_dialog(initial_tab: str = "create"):
             elif email in st.session_state.users:
                 st.warning("An account with this email already exists. Try logging in.")
             else:
-                st.session_state.users[email] = {"password": password}
+                st.session_state.users[email] = {"password": password, "preferences": {}}
                 st.session_state.user_histories[email] = []
+                save_user_store_from_session()
                 st.session_state.current_user = email
+                clear_preferences_from_session()
+                st.session_state.onboarding_complete = False
                 st.rerun()
 
     with login_tab:
@@ -139,6 +146,7 @@ def _show_auth_dialog(initial_tab: str = "create"):
             users = st.session_state.users
             if l_email in users and users[l_email]["password"] == l_password:
                 st.session_state.current_user = l_email
+                restore_preferences_for_user(l_email)
                 st.rerun()
             else:
                 st.error("Invalid email or password.")
@@ -153,6 +161,8 @@ def _show_auth_dialog(initial_tab: str = "create"):
     )
     if st.button("Continue as Guest →", use_container_width=True, key="dialog_guest_btn"):
         st.session_state.current_user = "__guest__"
+        clear_preferences_from_session()
+        st.session_state.onboarding_complete = False
         st.rerun()
     st.markdown(
         "<p style='text-align:center;font-size:0.72rem;color:#b0b0c0;"
@@ -165,6 +175,7 @@ def _show_auth_dialog(initial_tab: str = "create"):
 
 def main():
     init_session_state()
+    load_user_store_into_session()
     inject_css()
 
     # ── 1. Auth gate ──────────────────────────────────────────────────────────
@@ -689,6 +700,7 @@ def _run_onboarding():
         create_search_session(inputs, bundle, map_bundle)
         st.session_state.onboarding_complete = True
         st.session_state.done_confirmed      = False  # reset for future new searches
+        persist_current_preferences_for_user()
         st.rerun()
 
 
