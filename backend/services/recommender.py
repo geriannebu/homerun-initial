@@ -68,7 +68,7 @@ TAU_BY_AMENITY = {
     "supermarket": 10.0,
     "primary_school": 11.0,
 }
-VALUE_CLIP  = 0.10   # clip value_delta_pct to ±10% before normalising
+VALUE_CLIP  = 0.20   # clip value_delta_pct to ±10% before normalising
 TOP_N       = 10     # listings returned for Tinder swipe
 
 

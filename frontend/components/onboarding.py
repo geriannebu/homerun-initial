@@ -215,6 +215,9 @@ def _render_rank_list_with_buttons(rank):
         unsafe_allow_html=True,
     )
 
+    full_rank = st.session_state.get("pref_amenity_rank") or []
+    selected = st.session_state.get("pref_selected_amenities") or []
+
     for i, key in enumerate(rank):
         pos_col, info_col, up_col, down_col = st.columns([0.7, 5, 1, 1])
 
@@ -240,16 +243,19 @@ def _render_rank_list_with_buttons(rank):
 
         with up_col:
             if st.button("↑", key=f"up_{key}", use_container_width=True, disabled=(i == 0)):
-                st.session_state.pref_amenity_rank = _move_item(rank, i, -1)
+                new_selected_rank = _move_item(rank, i, -1)
+                remaining = [k for k in full_rank if k not in selected]
+                st.session_state.pref_amenity_rank = new_selected_rank + remaining
                 st.rerun()
 
         with down_col:
             if st.button("↓", key=f"down_{key}", use_container_width=True, disabled=(i == len(rank) - 1)):
-                st.session_state.pref_amenity_rank = _move_item(rank, i, 1)
+                new_selected_rank = _move_item(rank, i, 1)
+                remaining = [k for k in full_rank if k not in selected]
+                st.session_state.pref_amenity_rank = new_selected_rank + remaining
                 st.rerun()
 
         st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-
 
 def _render_rank_list_sortable(rank):
     st.markdown(
@@ -257,6 +263,9 @@ def _render_rank_list_sortable(rank):
         "text-transform:uppercase;letter-spacing:0.07em;'>Drag to reorder</div>",
         unsafe_allow_html=True,
     )
+
+    full_rank = st.session_state.get("pref_amenity_rank") or []
+    selected = st.session_state.get("pref_selected_amenities") or []
 
     labels_to_key = {
         FRONTEND_AMENITY_LABELS.get(k, k): k
@@ -270,8 +279,10 @@ def _render_rank_list_sortable(rank):
         key="amenity_sortable",
     )
 
-    new_rank = [labels_to_key[label] for label in sorted_display]
-    st.session_state.pref_amenity_rank = new_rank
+    new_selected_rank = [labels_to_key[label] for label in sorted_display]
+    remaining = [k for k in full_rank if k not in selected]
+
+    st.session_state.pref_amenity_rank = new_selected_rank + remaining
 
 
 def render_onboarding() -> bool:
@@ -860,21 +871,27 @@ def _render_predicted_amenity_ranking():
         rank = list(FRONTEND_AMENITY_LABELS.keys())
         st.session_state.pref_amenity_rank = rank
 
+    selected = st.session_state.get("pref_selected_amenities") or []
+    display_rank = [k for k in rank if k in selected]
+
     st.markdown(
         f"<div style='padding:12px 14px;background:#fff7ed;border:1px solid #fed7aa;"
         f"border-radius:12px;margin-bottom:1rem;font-size:0.9rem;color:#9a3412;'>"
-        f"{_priority_explainer(rank)}"
+        f"{_priority_explainer(display_rank)}"
         f"</div>",
         unsafe_allow_html=True,
     )
 
     if HAS_SORTABLES:
-        labels_to_key = {FRONTEND_AMENITY_LABELS.get(k, k): k for k in rank}
-        display_rank = [FRONTEND_AMENITY_LABELS.get(k, k) for k in rank]
-        sorted_display = sort_items(display_rank, direction="vertical", key="amenity_sortable")
-        st.session_state.pref_amenity_rank = [labels_to_key[label] for label in sorted_display]
+        labels_to_key = {FRONTEND_AMENITY_LABELS.get(k, k): k for k in display_rank}
+        display_labels = [FRONTEND_AMENITY_LABELS.get(k, k) for k in display_rank]
+        sorted_display = sort_items(display_labels, direction="vertical", key="amenity_sortable")
+
+        new_selected_rank = [labels_to_key[label] for label in sorted_display]
+        remaining = [k for k in rank if k not in selected]
+        st.session_state.pref_amenity_rank = new_selected_rank + remaining
     else:
-        _render_rank_list_with_buttons(rank)
+        _render_rank_list_with_buttons(display_rank)
 
     with st.expander("Why these priorities?"):
         st.markdown(
@@ -884,8 +901,8 @@ def _render_predicted_amenity_ranking():
 
         quiz_scores = st.session_state.get("pref_quiz_scores", {})
 
-        if rank:
-            for key in rank:
+        if display_rank:
+            for key in display_rank:
                 label = FRONTEND_AMENITY_LABELS.get(key, key)
                 quiz_pct = quiz_scores.get(key, 0.0) * 100
 
@@ -918,7 +935,8 @@ def _render_predicted_amenity_ranking():
             st.session_state.onboarding_step = 9
             st.rerun()
 
-    _back_btn("amenity_rank_back")
+    if len(selected) > 1:
+        _back_btn("amenity_rank_back")
 
 
 def _render_done() -> bool:

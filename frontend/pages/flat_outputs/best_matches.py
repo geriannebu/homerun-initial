@@ -317,7 +317,7 @@ def _get_ranked_unseen_df(listings_df: pd.DataFrame, unseen_ids: list) -> pd.Dat
 
 def render_listing_tab(listings_df: pd.DataFrame):
     if listings_df is None or listings_df.empty:
-        st.info("No listings available. Run a search first.")
+        st.info("No listings available. Run a new search!")
         return
 
     session = get_active_session()
@@ -412,7 +412,7 @@ def render_listing_tab(listings_df: pd.DataFrame):
     )
     # Render ONLY the current card so visuals and details stay synced
     html = _build_single_card_html(json.dumps(current_card))
-    components.html(html, height=445, scrolling=False)
+    components.html(html, height=510, scrolling=False)
 
     score = current_card["final_score"]
     color = "#059E87" if score >= 75 else "#d97706" if score >= 50 else "#FF4458"
@@ -454,20 +454,22 @@ def render_listing_tab(listings_df: pd.DataFrame):
         unsafe_allow_html=True,
     )
 
-    _render_swipe_controls(session["session_id"], current_card["listing_id"])
 
-    c1, c2, c3 = st.columns([1, 1.2, 1])
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        if st.button("✕ Pass", key=f"pass_{current_card['listing_id']}", use_container_width=True):
+            record_swipe(session["session_id"], str(current_card["listing_id"]), "left")
+            st.rerun()
+
     with c2:
-        if st.button("View listing details", key=f"deck_detail_{current_card['listing_id']}", use_container_width=True):
+        if st.button("View details", key=f"deck_detail_{current_card['listing_id']}", use_container_width=True):
             show_listing_detail(current_card["listing_id"])
 
-    total = len(listings_df)
-    seen = len(liked_ids) + len(passed_ids)
-    st.markdown(
-        f"<p style='text-align:center;font-size:0.8rem;color:#94a3b8;margin-top:0.5rem;'>"
-        f"{seen} of {total} seen · {len(liked_ids)} saved · {len(passed_ids)} passed</p>",
-        unsafe_allow_html=True,
-    )
+    with c3:
+        if st.button("♥ Save", key=f"save_{current_card['listing_id']}", type="primary", use_container_width=True):
+            record_swipe(session["session_id"], str(current_card["listing_id"]), "right")
+            st.rerun()
 
 
 def _render_swipe_controls(session_id: str, listing_id: str | None):
@@ -783,8 +785,10 @@ def _build_single_card_html(card_json: str) -> str:
 
                         <div class="match">
                             <div class="match-title">Why it matches</div>
-                            <div class="match-text" style="font-weight:700;color:#7c2d12;">{card["why_primary"]}</div>
-                            {f'<div class="match-text" style="margin-top:4px;color:#9a3412;">{card["why_secondary"]}</div>' if card.get("why_secondary") else ""}
+                            <ul style="margin:6px 0 0 18px;padding:0;color:#7c2d12;font-size:0.82rem;line-height:1.4;font-weight:700;">
+                                <li>{card["why_primary"]}</li>
+                                {f'<li>{card["why_secondary"]}</li>' if card.get("why_secondary") else ""}
+                            </ul>
                         </div>
                     </div>
 

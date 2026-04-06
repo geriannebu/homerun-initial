@@ -44,6 +44,7 @@ def get_prediction_bundle(inputs: UserInputs, ranking_profile: str = "balanced")
 
     amenity_weights = getattr(inputs, "amenity_weights", None) or DEFAULT_AMENITY_WEIGHTS
     amenity_ranking = getattr(inputs, "amenity_rank", None) or list(amenity_weights.keys())
+    ranking_profile = getattr(inputs, "ranking_profile", None) or ranking_profile or "balanced"
     alpha = RANKING_ALPHA.get(ranking_profile, 0.50)
 
     rooms = []
@@ -70,32 +71,20 @@ def get_prediction_bundle(inputs: UserInputs, ranking_profile: str = "balanced")
         top_n=10,
     )
 
-    scored_listings = rec["top"].copy()
+    top_df = rec.get("top")
+    if top_df is None or not isinstance(top_df, pd.DataFrame) or top_df.empty:
+        scored_listings = listings_df.head(0).copy().reset_index(drop=True)
+    else:
+        scored_listings = top_df.copy().reset_index(drop=True)
 
-   
+    if "listing_id" not in scored_listings.columns:
+        scored_listings["listing_id"] = scored_listings.index.astype(str)
 
-
-    # Rescale final_score to 0.5-1.0 so worst recommended listing still shows 50%+
-    if "final_score" in scored_listings.columns and len(scored_listings) > 1:
-        fs = scored_listings["final_score"]
-        fs_min, fs_max = fs.min(), fs.max()
-        if fs_max > fs_min:
-            scored_listings["final_score"] = (
-                0.5 + ((fs - fs_min) / (fs_max - fs_min)) * 0.5
-            ).round(4)
-        else:
-            scored_listings["final_score"] = 0.8
-
-    # Rescale final_score to 0.5-1.0 so worst recommended listing still shows 50%+
-    if "final_score" in scored_listings.columns and len(scored_listings) > 1:
-        fs = scored_listings["final_score"]
-        fs_min, fs_max = fs.min(), fs.max()
-        if fs_max > fs_min:
-            scored_listings["final_score"] = (
-                0.5 + ((fs - fs_min) / (fs_max - fs_min)) * 0.5
-            ).round(4)
-        else:
-            scored_listings["final_score"] = 0.8
+    if {"amenity_score", "value_score"}.issubset(scored_listings.columns):
+        scored_listings["final_score"] = (
+            alpha * scored_listings["amenity_score"].astype(float)
+            + (1 - alpha) * scored_listings["value_score"].astype(float)
+        ).round(4)
 
     viable_count = len(scored_listings)
 
