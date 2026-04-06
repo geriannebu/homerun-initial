@@ -223,7 +223,7 @@ def _render_landing_page():
                 </div>
                 <p style="font-size:0.95rem;color:#94a3b8;font-weight:500;
                           margin:0.4rem 0 2rem;line-height:1.6;">
-                    Find the fair price of your dream HDB flat.
+                    Match. Price. Decide.
                 </p>
             </div>
             """,
