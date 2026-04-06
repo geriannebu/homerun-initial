@@ -445,10 +445,6 @@ def _estimate_hypothetical_amenities(result: dict, listings_df: pd.DataFrame) ->
 
     return medians
 
-    amenity_estimates = _estimate_hypothetical_amenities(result, listings_df)
-    st.write("amenity_estimates", amenity_estimates)
-    result.update(amenity_estimates)
-
 def _build_hypothetical_result_row(result: dict) -> dict:
     row = {
         "listing_id": (

@@ -533,25 +533,47 @@ def _render_flat_type():
     _step_label(2)
     _heading("What type of flat?", "Pick one or more — tap to select, tap again to deselect.")
 
+    st.markdown(
+        """
+        <style>
+        .stButton > button {
+            word-break: keep-all !important;
+            overflow-wrap: normal !important;
+        }
+        
+        div[data-testid="stButton"] {
+            margin-bottom: 0rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     selected_types: list = list(st.session_state.get("pref_flat_types") or ["4 ROOM"])
 
-    cols = st.columns(len(FLAT_TYPES))
-    for i, ft in enumerate(FLAT_TYPES):
-        is_selected = ft in selected_types
-        with cols[i]:
-            if st.button(
-                f"{FLAT_ICONS[ft]} {FLAT_TYPE_LABELS[ft]}",
-                key=f"ft_{ft}",
-                use_container_width=True,
-                type="primary" if is_selected else "secondary",
-            ):
-                if is_selected and len(selected_types) > 1:
-                    selected_types.remove(ft)
-                elif not is_selected:
-                    selected_types.append(ft)
-                st.session_state.pref_flat_types = selected_types
-                st.session_state.pref_floor_area_sqft_manual = False
-                st.rerun()
+    row1 = FLAT_TYPES[:4]
+    row2 = FLAT_TYPES[4:]
+
+    for row_types in [row1, row2]:
+        cols = st.columns(len(row_types))
+        for i, ft in enumerate(row_types):
+            is_selected = ft in selected_types
+            with cols[i]:
+                if st.button(
+                    f"{FLAT_ICONS[ft]} {FLAT_TYPE_LABELS[ft]}",
+                    key=f"ft_{ft}",
+                    use_container_width=True,
+                    type="primary" if is_selected else "secondary",
+                ):
+                    if is_selected and len(selected_types) > 1:
+                        selected_types.remove(ft)
+                    elif not is_selected:
+                        selected_types.append(ft)
+
+                    st.session_state.pref_flat_types = selected_types
+                    st.session_state.pref_floor_area_sqft_manual = False
+                    st.rerun()
+
 
     n = len(selected_types)
     ordered = [ft for ft in FLAT_TYPES if ft in selected_types]
@@ -563,6 +585,7 @@ def _render_flat_type():
         for ft in ordered
     )
     count_label = f"{n} selected" if n > 1 else "1 selected"
+
     st.markdown(
         f"<div style='text-align:center;margin:0.8rem 0 0.4rem;'>"
         f"<span style='font-size:0.75rem;color:#6b7280;margin-right:6px;'>{count_label}:</span>"
@@ -571,13 +594,14 @@ def _render_flat_type():
     )
 
     st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
+
     if _next_btn(key="ft_next"):
         if not st.session_state.get("pref_flat_types"):
             st.session_state.pref_flat_types = ["4 ROOM"]
         st.session_state.onboarding_step = 3
         st.rerun()
-    _back_btn("ft_back")
 
+    _back_btn("ft_back")
 
 _FLAT_TYPE_MIN_SQFT = {
     "1 ROOM": 300,
