@@ -73,6 +73,17 @@ def get_prediction_bundle(inputs: UserInputs, ranking_profile: str = "balanced")
     # rec["top"] is already top-N and scrambled by run_recommender — preserve that order
     scored_listings = rec["top"].copy().reset_index(drop=True)
 
+    # Rescale final_score to 0.5-1.0 so worst recommended listing still shows 50%+
+    if "final_score" in scored_listings.columns and len(scored_listings) > 1:
+        fs = scored_listings["final_score"]
+        fs_min, fs_max = fs.min(), fs.max()
+        if fs_max > fs_min:
+            scored_listings["final_score"] = (
+                0.5 + ((fs - fs_min) / (fs_max - fs_min)) * 0.5
+            ).round(4)
+        else:
+            scored_listings["final_score"] = 0.8
+
     viable_count = len(scored_listings)
 
     predicted_price = int(scored_listings["predicted_price"].median()) if viable_count else 0

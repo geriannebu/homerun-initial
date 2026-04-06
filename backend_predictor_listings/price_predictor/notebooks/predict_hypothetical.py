@@ -5,6 +5,7 @@ import zipfile
 from pathlib import Path
 import numpy as np
 import pandas as pd
+import sklearn          # must be imported before xgboost so SKLEARN_INSTALLED=True
 import xgboost as xgb
 from catboost import CatBoostRegressor, Pool
 
