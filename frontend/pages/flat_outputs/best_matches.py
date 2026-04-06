@@ -52,32 +52,162 @@ def _val_color(label: str) -> str:
     return "#dc2626"
 
 
-def _why_match(row, inputs) -> str:
-    rank = getattr(inputs, "amenity_rank", [])
-    top_amenities = rank[:2] if rank else []
-    reasons = []
+def _why_match(row, inputs, deck_df: pd.DataFrame | None = None) -> tuple[str, str]:
+    rank = list(getattr(inputs, "amenity_rank", []) or [])
+    top_amenities = rank[:3] if rank else []
 
-    diff = float(row.get("valuation_pct", 0))
-    if diff <= -5:
-        reasons.append("priced below model estimate")
-    elif diff <= 3:
-        reasons.append("fairly priced")
+    diff = pd.to_numeric(row.get("valuation_pct"), errors="coerce")
+    town_pref = getattr(inputs, "town", None)
+    min_lease = getattr(inputs, "remaining_lease_years", None)
+    min_area = getattr(inputs, "floor_area_sqm", None)
 
-    for amen in top_amenities:
-        score = float(row.get(f"walk_acc_{amen}", 0))
-        if score >= 0.6:
-            label = {
-                "train": "strong MRT access",
-                "bus": "good bus connectivity",
-                "primary_school": "schools nearby",
-                "hawker": "hawker food nearby",
-                "mall": "shopping nearby",
-                "polyclinic": "healthcare nearby",
-                "supermarket": "supermarkets nearby",
-            }.get(amen, amen)
-            reasons.append(label)
+    flat_town = str(row.get("town", "")).strip().upper()
+    pref_town = str(town_pref).strip().upper() if town_pref else None
 
-    return " • ".join(reasons) if reasons else "Good overall fit"
+    lease_val = pd.to_numeric(
+        row.get("remaining_lease_years", row.get("remaining_lease")),
+        errors="coerce"
+    )
+    area_val = pd.to_numeric(row.get("floor_area_sqm"), errors="coerce")
+
+    amenity_phrases = {
+        "train": {
+            "elite": "Best MRT access among your top matches",
+            "strong": "Strong MRT access",
+            "good": "Close to MRT stations",
+        },
+        "bus": {
+            "elite": "Best bus connectivity in this deck",
+            "strong": "Strong bus connectivity",
+            "good": "Close to bus stops",
+        },
+        "primary_school": {
+            "elite": "Closest to schools in this shortlist",
+            "strong": "Strong school access",
+            "good": "Schools nearby",
+        },
+        "hawker": {
+            "elite": "Best hawker access in this deck",
+            "strong": "Strong hawker access",
+            "good": "Hawker food nearby",
+        },
+        "mall": {
+            "elite": "Closest to shopping malls in this deck",
+            "strong": "Strong shopping access",
+            "good": "Shopping nearby",
+        },
+        "polyclinic": {
+            "elite": "Best healthcare access among your top matches",
+            "strong": "Strong healthcare access",
+            "good": "Healthcare nearby",
+        },
+        "supermarket": {
+            "elite": "Best supermarket access in this deck",
+            "strong": "Strong supermarket access",
+            "good": "Convenient grocery access",
+        },
+    }
+
+    # ---------- 1) Primary line: standout amenity relative to deck ----------
+    primary = None
+    amenity_candidates = []
+
+    for idx, amen in enumerate(top_amenities):
+        score_col = f"walk_acc_{amen}"
+        score = pd.to_numeric(row.get(score_col), errors="coerce")
+        if pd.isna(score):
+            continue
+
+        relative_bonus = 0
+        pct_rank = 0
+
+        if deck_df is not None and score_col in deck_df.columns:
+            deck_scores = pd.to_numeric(deck_df[score_col], errors="coerce").dropna()
+            if len(deck_scores) > 0:
+                pct_rank = (deck_scores < float(score)).mean()
+                if pct_rank >= 0.85:
+                    relative_bonus = 20
+                elif pct_rank >= 0.65:
+                    relative_bonus = 10
+                elif pct_rank >= 0.45:
+                    relative_bonus = 4
+
+        priority_bonus = max(0, 18 - 5 * idx)
+        base_score = float(score) * 100 + relative_bonus + priority_bonus
+
+        # bus is common, so downweight it a lot
+        if amen == "bus":
+            base_score -= 20
+
+        amenity_candidates.append({
+            "amenity": amen,
+            "score": base_score,
+            "pct_rank": pct_rank,
+            "raw_score": float(score),
+        })
+
+    amenity_candidates = sorted(amenity_candidates, key=lambda x: x["score"], reverse=True)
+
+    if amenity_candidates:
+        best = amenity_candidates[0]
+        amen = best["amenity"]
+        phrases = amenity_phrases.get(amen, {})
+
+        if best["pct_rank"] >= 0.85:
+            primary = phrases.get("elite", amen)
+        elif best["raw_score"] >= 0.78:
+            primary = phrases.get("strong", amen)
+        else:
+            primary = phrases.get("good", amen)
+            
+    # ---------- 2) Secondary line: supporting reason ----------
+    secondary_candidates = []
+
+    if pd.notna(diff):
+        if deck_df is not None and "valuation_pct" in deck_df.columns:
+            deck_diffs = pd.to_numeric(deck_df["valuation_pct"], errors="coerce").dropna()
+            if len(deck_diffs) > 0:
+                pct_better_than = (deck_diffs > float(diff)).mean()
+
+                if diff <= -5 and pct_better_than >= 0.75:
+                    secondary_candidates.append(("priced below model estimate", 78))
+                elif -2 <= diff <= 2 and pct_better_than >= 0.60:
+                    secondary_candidates.append(("fairly priced for this deck", 54))
+        else:
+            if diff <= -8:
+                secondary_candidates.append(("priced below model estimate", 72))
+
+    if pd.notna(min_lease) and pd.notna(lease_val):
+        lease_bonus = lease_val - float(min_lease)
+        if lease_bonus >= 12:
+            secondary_candidates.append(("long remaining lease", 72 + min(10, lease_bonus)))
+
+    if pd.notna(min_area) and pd.notna(area_val):
+        area_bonus = area_val - float(min_area)
+        if area_bonus >= 8:
+            secondary_candidates.append(("larger floor area than your minimum", 70 + min(8, area_bonus)))
+
+    if pref_town and flat_town == pref_town:
+        if deck_df is not None and "town" in deck_df.columns:
+            deck_towns = deck_df["town"].fillna("").astype(str).str.upper()
+            share_in_pref_town = (deck_towns == pref_town).mean()
+            if share_in_pref_town < 0.75:
+                secondary_candidates.append(("in your preferred town", 64))
+        else:
+            secondary_candidates.append(("in your preferred town", 64))
+
+    secondary_candidates = sorted(secondary_candidates, key=lambda x: x[1], reverse=True)
+    secondary = secondary_candidates[0][0] if secondary_candidates else "balanced overall match"
+
+    # avoid exact duplicate meaning
+    if primary and secondary and primary.lower() == secondary.lower():
+        secondary = "balanced overall match"
+
+    if primary is None:
+        primary = secondary
+        secondary = ""
+
+    return primary, secondary
 
 def _sqm_to_sqft(area_sqm) -> int:
     try:
@@ -97,7 +227,7 @@ def _format_remaining_lease(value):
         return "-"
 
 
-def _serialize_card(row, inputs, budget=None) -> dict:
+def _serialize_card(row, inputs, budget=None, deck_df: pd.DataFrame | None = None) -> dict:
     diff = float(row.get("valuation_pct", 0))
     if diff <= -5:
         label = "Great Deal"
@@ -137,6 +267,7 @@ def _serialize_card(row, inputs, budget=None) -> dict:
         budget_gap_pct = round((budget_gap / asking) * 100, 1)
         is_within_budget = budget_gap >= 0
 
+    primary_why, secondary_why = _why_match(row, inputs, deck_df=deck_df)
     card = {
         "id": str(row.get("listing_id", "")),
         "listing_id": str(row.get("listing_id", "")),
@@ -153,7 +284,8 @@ def _serialize_card(row, inputs, budget=None) -> dict:
         "label": label,
         "label_color": _val_color(label),
         "map_url": _map_url(town),
-        "why": _why_match(row, inputs),
+        "why_primary": primary_why,
+        "why_secondary": secondary_why,
         "final_score": float(row.get("final_score", 0)) * 100,
         "budget": budget_val,
         "budget_gap": budget_gap,
@@ -226,7 +358,15 @@ def render_listing_tab(listings_df: pd.DataFrame):
 
     current_row = ranked_unseen.iloc[0]
     budget = getattr(inputs, "budget", None)
-    current_card = _serialize_card(current_row, inputs, budget=budget)
+
+    deck_context_df = ranked_unseen.head(12).copy()
+
+    current_card = _serialize_card(
+        current_row,
+        inputs,
+        budget=budget,
+        deck_df=deck_context_df,
+    )
 
     st.markdown(
         """
@@ -643,7 +783,8 @@ def _build_single_card_html(card_json: str) -> str:
 
                         <div class="match">
                             <div class="match-title">Why it matches</div>
-                            <div class="match-text">{card["why"]}</div>
+                            <div class="match-text" style="font-weight:700;color:#7c2d12;">{card["why_primary"]}</div>
+                            {f'<div class="match-text" style="margin-top:4px;color:#9a3412;">{card["why_secondary"]}</div>' if card.get("why_secondary") else ""}
                         </div>
                     </div>
 

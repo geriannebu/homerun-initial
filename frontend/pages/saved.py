@@ -16,19 +16,29 @@ from backend.utils.formatters import fmt_sgd, valuation_tag_html
 from frontend.state.session import get_active_session_liked_df, get_active_session
 from frontend.components.listing_detail import show_listing_detail, _val_style
 from backend.utils.constants import AMENITY_COLORS, AMENITY_LABELS, TOWN_COORDS
-from frontend.pages.flat_outputs.map_view import top_priority_keys, add_nearest_amenity_distances
-
 
 def _normalize_amenity_key(key: str) -> str:
     mapping = {
         "mall": "retail",
         "shopping_mall": "retail",
+        "retail": "retail",
+
         "polyclinic": "healthcare",
         "clinic": "healthcare",
         "hospital": "healthcare",
+        "healthcare": "healthcare",
+
         "train": "mrt",
         "station": "mrt",
+        "mrt": "mrt",
+
         "school": "schools",
+        "primary_school": "schools",
+        "schools": "schools",
+
+        "bus": "bus",
+        "hawker": "hawker",
+        "supermarket": "supermarket",
     }
     return mapping.get(str(key).strip().lower(), str(key).strip().lower())
 
@@ -42,6 +52,88 @@ def _safe_amenity_color(key: str):
     key = _normalize_amenity_key(key)
     return AMENITY_COLORS.get(key, [120, 120, 120, 180])
 
+def _selected_amenities_for_saved_map() -> list[str]:
+    """
+    Use the explicitly selected amenities captured during onboarding.
+    This is a UI-only helper and does not affect recommendation outputs.
+    """
+    selected = st.session_state.get("pref_selected_amenities", []) or []
+    visible = []
+
+    for key in selected:
+        norm_key = _normalize_amenity_key(key)
+        if norm_key not in visible:
+            visible.append(norm_key)
+
+    return visible
+
+
+def _distinct_visible_amenity_colors(keys: list[str]) -> dict[str, list[int]]:
+    """
+    Assign distinct map colors to each visible amenity type so they do not clash.
+    """
+    palette = [
+        [255, 99, 132, 210],   # pink-red
+        [54, 162, 235, 210],   # blue
+        [255, 206, 86, 210],   # yellow
+        [75, 192, 192, 210],   # teal
+        [153, 102, 255, 210],  # purple
+        [255, 159, 64, 210],   # orange
+        [46, 204, 113, 210],   # green
+    ]
+
+    color_map = {}
+    for i, key in enumerate(keys):
+        color_map[key] = palette[i % len(palette)]
+    return color_map
+
+def _selected_amenity_keys_from_weights(amenity_weights: dict) -> list[str]:
+    """
+    Return all amenities that the user meaningfully selected / weighted
+    during onboarding, preserving descending weight order.
+    """
+    if not amenity_weights:
+        return []
+
+    ranked = sorted(
+        amenity_weights.items(),
+        key=lambda x: (x[1] is not None, float(x[1]) if x[1] is not None else -1),
+        reverse=True,
+    )
+
+    visible = []
+    for key, weight in ranked:
+        norm_key = _normalize_amenity_key(key)
+        try:
+            weight_val = float(weight)
+        except Exception:
+            continue
+
+        if weight_val > 0 and norm_key not in visible:
+            visible.append(norm_key)
+
+    return visible
+
+
+def _distinct_visible_amenity_colors(keys: list[str]) -> dict[str, list[int]]:
+    """
+    Force clearly distinct colors for visible amenities in the Saved map,
+    instead of relying only on AMENITY_COLORS (which may look too similar).
+    """
+    palette = [
+        [255, 99, 132, 210],   # pink-red
+        [54, 162, 235, 210],   # blue
+        [255, 206, 86, 210],   # yellow
+        [75, 192, 192, 210],   # teal
+        [153, 102, 255, 210],  # purple
+        [255, 159, 64, 210],   # orange
+        [46, 204, 113, 210],   # green
+    ]
+
+    color_map = {}
+    for i, key in enumerate(keys):
+        color_map[key] = palette[i % len(palette)]
+    return color_map
 
 def _safe_text(value, fallback="—"):
     if value is None:
@@ -373,16 +465,17 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
 
         visible = []
         amenities_df = pd.DataFrame()
+        visible_color_map = {}
 
-        if latest_inputs is not None and latest_map_bundle is not None:
-            visible = top_priority_keys(latest_inputs.amenity_weights, 3)
-            visible = [_normalize_amenity_key(k) for k in visible]
-            visible = list(dict.fromkeys(visible))
+        if latest_map_bundle is not None:
+            visible = _selected_amenities_for_saved_map()
             amenities_df = latest_map_bundle.get("amenities_df", pd.DataFrame())
 
             if not amenities_df.empty and "amenity_type" in amenities_df.columns:
                 amenities_df = amenities_df.copy()
                 amenities_df["amenity_type"] = amenities_df["amenity_type"].apply(_normalize_amenity_key)
+
+            visible_color_map = _distinct_visible_amenity_colors(visible)
 
         saved_points = liked_df.copy()
 
@@ -440,39 +533,133 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                     return ""
 
             def saved_tooltip(r):
-                title = r.get("address", r.get("listing_id", "Unknown listing"))
+                raw_title = r.get("address", r.get("listing_id", "Unknown listing"))
+                raw_title = _safe_text(raw_title, "Unknown listing")
+
+                title_main = raw_title
+                postal_caption = ""
+
+                upper_title = str(raw_title).upper().strip()
+                if " SINGAPORE " in upper_title:
+                    parts = upper_title.rsplit(" SINGAPORE ", 1)
+                    if len(parts) == 2:
+                        title_main = parts[0].strip()
+                        postal_code = parts[1].strip()
+                        if postal_code.isdigit():
+                            postal_caption = f"S({postal_code})"
 
                 lines = [
-                    f"<b>{_escape(title)}</b>",
-                    f"<b>Town:</b> {_escape(r.get('town', '—'))}",
-                    f"<b>Type:</b> {_escape(r.get('flat_type', '—'))}",
+                    f"<div style='font-weight:800;font-size:0.95rem;color:#0f172a;line-height:1.2;margin:1;'>"
+                    f"{_escape(title_main)}</div>"
                 ]
 
+                if postal_caption:
+                    lines.append(
+                        f"<div style='font-size:0.72rem;color:#6b7280;line-height:1.1;margin:1;'>"
+                        f"{_escape(postal_caption)}</div>"
+                    )
+
+                lines.append(
+                    f"<div style='line-height:1.1;margin:1;'><b>Town:</b> {_escape(r.get('town', '—'))}</div>"
+                )
+                lines.append(
+                    f"<div style='line-height:1.1;margin:1;'><b>Type:</b> {_escape(r.get('flat_type', '—'))}</div>"
+                )
+
                 if bool(r.get("is_hypothetical", False)):
-                    lines.append("<b>Location:</b> Approximate town-level estimate")
+                    lines.append(
+                        "<div style='line-height:1.1;margin:1;'><b>Location:</b> Approximate town-level estimate</div>"
+                    )
 
                 if pd.notna(r.get("asking_price")):
-                    lines.append(f"<b>Asking price:</b> ${int(r['asking_price']):,}")
+                    lines.append(
+                        f"<div style='line-height:1.1;margin:1;'><b>Asking price:</b> ${int(r['asking_price']):,}</div>"
+                    )
                 elif pd.notna(r.get("price")):
-                    lines.append(f"<b>Price:</b> ${int(r['price']):,}")
+                    lines.append(
+                        f"<div style='line-height:1.1;margin:1;'><b>Price:</b> ${int(r['price']):,}</div>"
+                    )
                 elif pd.notna(r.get("predicted_price")):
-                    lines.append(f"<b>Predicted price:</b> ${int(r['predicted_price']):,}")
+                    lines.append(
+                        f"<div style='line-height:1.1;margin:1;'><b>Predicted price:</b> ${int(r['predicted_price']):,}</div>"
+                    )
 
                 for amenity_type in visible:
                     km_val = _dist_km_from_row(r, amenity_type)
                     if km_val != "":
                         prefix = "Estimated nearest" if bool(r.get("is_hypothetical", False)) else "Nearest"
                         lines.append(
-                            f"<b>{prefix} {_escape(_safe_amenity_label(amenity_type))}:</b> {km_val} km"
+                            f"<div style='line-height:1.1;margin:1;'><b>{prefix} {_escape(_safe_amenity_label(amenity_type))}:</b> {km_val} km</div>"
                         )
 
-                return "<br/>".join(lines)
-
+                return "".join(lines)
+            
             if not plotted_points.empty:
                 plotted_points["tooltip_html"] = plotted_points.apply(saved_tooltip, axis=1)
+                # -----------------------------
+                # row selection can control map focus
+                # -----------------------------
+                summary = plotted_points[["listing_id", "town"]].copy()
 
-                center_lat = float(plotted_points["lat"].mean())
-                center_lon = float(plotted_points["lon"].mean())
+                for amenity_type in visible:
+                    amenity_type = _normalize_amenity_key(amenity_type)
+                    source_col = amenity_distance_cols.get(amenity_type)
+
+                    if source_col in plotted_points.columns:
+                        summary[f"Nearest {_safe_amenity_label(amenity_type)} (km)"] = (
+                            pd.to_numeric(plotted_points[source_col], errors="coerce") / 1000
+                        ).round(2)
+
+                st.markdown("**Nearest amenity distances**")
+
+                selection_event = st.dataframe(
+                    summary,
+                    use_container_width=True,
+                    hide_index=True,
+                    on_select="rerun",
+                    selection_mode="single-row",
+                    key="saved_map_summary_table",
+                )
+
+                selected_rows = []
+                try:
+                    selected_rows = selection_event.selection.rows
+                except Exception:
+                    selected_rows = []
+
+                selected_rows = []
+                try:
+                    selected_rows = selection_event.selection.rows
+                except Exception:
+                    selected_rows = []
+
+                if selected_rows:
+                    selected_idx = selected_rows[0]
+                    if 0 <= selected_idx < len(plotted_points):
+                        st.session_state["saved_map_focus_listing_id"] = str(
+                            plotted_points.iloc[selected_idx]["listing_id"]
+                        )
+                else:
+                    st.session_state["saved_map_focus_listing_id"] = None
+
+                selected_focus_listing_id = st.session_state.get("saved_map_focus_listing_id")
+
+                focus_row = None
+                if selected_focus_listing_id:
+                    match = plotted_points[
+                        plotted_points["listing_id"].astype(str) == str(selected_focus_listing_id)
+                    ]
+                    if not match.empty:
+                        focus_row = match.iloc[0]
+
+                if focus_row is not None:
+                    center_lat = float(focus_row["lat"])
+                    center_lon = float(focus_row["lon"])
+                    map_zoom = 12.3
+                else:
+                    center_lat = float(plotted_points["lat"].mean())
+                    center_lon = float(plotted_points["lon"].mean())
+                    map_zoom = 11.8
 
                 real_points = plotted_points[~plotted_points["is_hypothetical"].fillna(False)].copy()
                 hyp_points = plotted_points[plotted_points["is_hypothetical"].fillna(False)].copy()
@@ -482,11 +669,15 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                 # Optional amenity markers for context
                 if not filtered_amenities.empty:
                     for amenity_type in visible:
+                        amenity_type = _normalize_amenity_key(amenity_type)
                         sub = filtered_amenities[filtered_amenities["amenity_type"] == amenity_type]
                         if not sub.empty:
                             sub = sub.copy()
                             amenity_label = _safe_amenity_label(amenity_type)
-                            amenity_color = _safe_amenity_color(amenity_type)
+                            amenity_color = visible_color_map.get(
+                                amenity_type,
+                                _safe_amenity_color(amenity_type)
+                            )
 
                             sub["tooltip_html"] = sub.apply(
                                 lambda r: (
@@ -508,7 +699,6 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                                     pickable=True,
                                 )
                             )
-
 
                 # Real listings: exact points
                 if not real_points.empty:
@@ -554,13 +744,30 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                         )
                     )
 
+                # Glow / highlight for selected listing
+                if focus_row is not None:
+                    glow_df = pd.DataFrame([focus_row])
+
+                    layers.append(
+                        pdk.Layer(
+                            "ScatterplotLayer",
+                            data=glow_df,
+                            get_position="[lon, lat]",
+                            get_fill_color=[255, 196, 0, 70],
+                            get_radius=700,
+                            pickable=False,
+                        )
+                    )
+
+            
+
                 deck = pdk.Deck(
                     map_provider="carto",
                     map_style="light",
                     initial_view_state=pdk.ViewState(
                         latitude=center_lat,
                         longitude=center_lon,
-                        zoom=11.8,
+                        zoom=map_zoom,
                         pitch=0,
                     ),
                     layers=layers,
@@ -573,19 +780,6 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                 st.pydeck_chart(deck, use_container_width=True)
             else:
                 st.info("Saved flats do not have mappable coordinates yet.")
-
-            if visible:
-                summary = saved_points[["listing_id", "town"]].copy()
-
-                for amenity_type in visible:
-                    source_col = amenity_distance_cols.get(amenity_type)
-                    if source_col in saved_points.columns:
-                        summary[f"Nearest {_safe_amenity_label(amenity_type)} (km)"] = (
-                            pd.to_numeric(saved_points[source_col], errors="coerce") / 1000
-                        ).round(2)
-
-                st.markdown("**Nearest amenity distances**")
-                st.dataframe(summary, use_container_width=True, hide_index=True)
         else:
             st.info("No saved flats available to show on the map.")
 
