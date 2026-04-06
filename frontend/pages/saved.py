@@ -599,7 +599,21 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                 # -----------------------------
                 # row selection can control map focus
                 # -----------------------------
-                summary = plotted_points[["listing_id", "town"]].copy()
+                summary = plotted_points[["address", "town"]].copy()
+
+                def _clean_address_for_table(val):
+                    text = _safe_text(val, "Unknown listing")
+                    upper_text = str(text).upper().strip()
+
+                    if " SINGAPORE " in upper_text:
+                        parts = upper_text.rsplit(" SINGAPORE ", 1)
+                        if len(parts) == 2:
+                            return parts[0].strip()
+
+                    return text
+
+                summary["address"] = summary["address"].apply(_clean_address_for_table)
+                summary = summary.rename(columns={"address": "Address", "town": "Town"})
 
                 for amenity_type in visible:
                     amenity_type = _normalize_amenity_key(amenity_type)
