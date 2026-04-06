@@ -99,11 +99,12 @@ def _apply_tiebreak_adjustments(
 ) -> dict[str, float]:
     """
     Apply simple pairwise tie-break nudges:
-    - chosen amenity gets +1
-    - the other gets -1
-    Then shift scores up if needed and renormalise to sum to 1.
+    - chosen amenity gets a small positive bonus
+    - the other amenity is unchanged
+    Then renormalise to sum to 1.
     """
     adjusted = {k: float(v) for k, v in base_weights.items()}
+    delta = 0.1
 
     for pair_key, chosen in tiebreak_choices.items():
         if not chosen or "__" not in pair_key:
@@ -112,16 +113,9 @@ def _apply_tiebreak_adjustments(
         a1, a2 = pair_key.split("__")
 
         if chosen == a1:
-            adjusted[a1] = adjusted.get(a1, 0.0) + 1.0
-            adjusted[a2] = adjusted.get(a2, 0.0) - 1.0
+            adjusted[a1] = adjusted.get(a1, 0.0) + delta
         elif chosen == a2:
-            adjusted[a2] = adjusted.get(a2, 0.0) + 1.0
-            adjusted[a1] = adjusted.get(a1, 0.0) - 1.0
-
-    min_val = min(adjusted.values()) if adjusted else 0.0
-    if min_val <= 0:
-        shift = abs(min_val) + 0.001
-        adjusted = {k: v + shift for k, v in adjusted.items()}
+            adjusted[a2] = adjusted.get(a2, 0.0) + delta
 
     total = sum(adjusted.values())
     if total <= 0:
