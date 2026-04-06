@@ -71,7 +71,14 @@ def get_prediction_bundle(inputs: UserInputs, ranking_profile: str = "balanced")
         top_n=10,
     )
 
-    scored_listings = rec["top"].copy()
+    top_df = rec.get("top")
+    if top_df is None or not isinstance(top_df, pd.DataFrame) or top_df.empty:
+        scored_listings = listings_df.head(0).copy().reset_index(drop=True)
+    else:
+        scored_listings = top_df.copy().reset_index(drop=True)
+
+    if "listing_id" not in scored_listings.columns:
+        scored_listings["listing_id"] = scored_listings.index.astype(str)
 
     if {"amenity_score", "value_score"}.issubset(scored_listings.columns):
         scored_listings["final_score"] = (

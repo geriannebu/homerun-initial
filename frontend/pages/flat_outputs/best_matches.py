@@ -317,7 +317,7 @@ def _get_ranked_unseen_df(listings_df: pd.DataFrame, unseen_ids: list) -> pd.Dat
 
 def render_listing_tab(listings_df: pd.DataFrame):
     if listings_df is None or listings_df.empty:
-        st.info("No listings available. Run a search first.")
+        st.info("No listings available. Run a new search!")
         return
 
     session = get_active_session()
