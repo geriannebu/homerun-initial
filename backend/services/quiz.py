@@ -93,6 +93,44 @@ def _compute_normalised_weights(
     return {a: round(v / total, 4) for a, v in scores.items()}
 
 
+def _apply_tiebreak_adjustments(
+    base_weights: dict[str, float],
+    tiebreak_choices: dict[str, str | None],
+) -> dict[str, float]:
+    """
+    Apply simple pairwise tie-break nudges:
+    - chosen amenity gets +1
+    - the other gets -1
+    Then shift scores up if needed and renormalise to sum to 1.
+    """
+    adjusted = {k: float(v) for k, v in base_weights.items()}
+
+    for pair_key, chosen in tiebreak_choices.items():
+        if not chosen or "__" not in pair_key:
+            continue
+
+        a1, a2 = pair_key.split("__")
+
+        if chosen == a1:
+            adjusted[a1] = adjusted.get(a1, 0.0) + 1.0
+            adjusted[a2] = adjusted.get(a2, 0.0) - 1.0
+        elif chosen == a2:
+            adjusted[a2] = adjusted.get(a2, 0.0) + 1.0
+            adjusted[a1] = adjusted.get(a1, 0.0) - 1.0
+
+    min_val = min(adjusted.values()) if adjusted else 0.0
+    if min_val <= 0:
+        shift = abs(min_val) + 0.001
+        adjusted = {k: v + shift for k, v in adjusted.items()}
+
+    total = sum(adjusted.values())
+    if total <= 0:
+        n = len(adjusted)
+        return {k: round(1 / n, 4) for k in adjusted} if n else {}
+
+    return {k: round(v / total, 4) for k, v in adjusted.items()}
+
+
 def rank_sum_weights(ranking: list[str]) -> dict[str, float]:
     n = len(ranking)
     denom = n * (n + 1) / 2
@@ -221,7 +259,7 @@ def render_quiz() -> tuple[dict[str, float], list[str], dict[str, float]]:
             ss.quiz_normalised_weights = weights
             ss.quiz_ranking = ranking
             ss.quiz_ties = _find_ties(ranking, weights)
-            ss.quiz_tiebreak = {f"{a1}__{a2}": 0 for a1, a2 in ss.quiz_ties}
+            ss.quiz_tiebreak = {f"{a1}__{a2}": None for a1, a2 in ss.quiz_ties}
             ss.quiz_step = "tiebreak" if ss.quiz_ties else "done"
             st.rerun()
             return {}, [], {}
@@ -262,58 +300,81 @@ def render_quiz() -> tuple[dict[str, float], list[str], dict[str, float]]:
                 ss.quiz_ranking = ranking
                 ties = _find_ties(ranking, weights)
                 ss.quiz_ties = ties
-                ss.quiz_tiebreak = {f"{a1}__{a2}": 0 for a1, a2 in ties}
+                ss.quiz_tiebreak = {f"{a1}__{a2}": None for a1, a2 in ties}
                 ss.quiz_step = "tiebreak" if ties else "done"
                 st.rerun()
         return {}, [], {}
 
     if ss.quiz_step == "tiebreak":
         ties = ss.quiz_ties
-        ranking = list(ss.quiz_ranking)
+        base_weights = dict(ss.quiz_normalised_weights)
 
-        st.markdown("**Step 3 — Help us understand your preference**")
-        st.caption("A few options came out very close, so this helps us refine the order.")
+        st.markdown("**Step 3 — A quick tie-break**")
+        st.caption("Some amenities came out very close. Pick which one matters more to you.")
 
         for a1, a2 in ties:
             label1, label2 = QUIZ_AMENITY_LABELS[a1], QUIZ_AMENITY_LABELS[a2]
             key = f"{a1}__{a2}"
 
-            st.markdown(f"**{label1} vs {label2}**")
-            val = st.slider(
-                label=key,
-                min_value=-5,
-                max_value=5,
-                value=ss.quiz_tiebreak.get(key, 0),
-                label_visibility="collapsed",
-                key=f"_qtb_{key}",
-            )
+            st.markdown(f"**Which matters more to you?**")
 
-            cl, _, cr = st.columns([2, 1, 2])
-            with cl:
-                st.caption(f"◄ {label1}")
-            with cr:
-                st.caption(f"{label2} ►")
+            c1, c2 = st.columns(2)
+            with c1:
+                selected_left = ss.quiz_tiebreak.get(key) == a1
+                if st.button(
+                    label1,
+                    key=f"_qtb_left_{key}",
+                    use_container_width=True,
+                    type="primary" if selected_left else "secondary",
+                ):
+                    ss.quiz_tiebreak[key] = a1
+                    st.rerun()
 
-            ss.quiz_tiebreak[key] = val
+            with c2:
+                selected_right = ss.quiz_tiebreak.get(key) == a2
+                if st.button(
+                    label2,
+                    key=f"_qtb_right_{key}",
+                    use_container_width=True,
+                    type="primary" if selected_right else "secondary",
+                ):
+                    ss.quiz_tiebreak[key] = a2
+                    st.rerun()
+
+            chosen = ss.quiz_tiebreak.get(key)
+            if chosen == a1:
+                st.caption(f"Selected: {label1}")
+            elif chosen == a2:
+                st.caption(f"Selected: {label2}")
+            else:
+                st.caption("No selection yet")
+
             st.divider()
 
         c1, c2 = st.columns([1, 5])
+
         with c1:
             if st.button("← Back", key="_qback3"):
                 questions = _build_active_questions(ss.quiz_selected)
                 ss.quiz_step = "quiz" if questions else "select"
                 st.rerun()
-                
+
         with c2:
-            if st.button("Apply →", key="_qnext3"):
-                for a1, a2 in ties:
-                    val = ss.quiz_tiebreak.get(f"{a1}__{a2}", 0)
-                    if val > 0:
-                        i1, i2 = ranking.index(a1), ranking.index(a2)
-                        ranking[i1], ranking[i2] = ranking[i2], ranking[i1]
+            all_answered = all(
+                ss.quiz_tiebreak.get(f"{a1}__{a2}") in {a1, a2}
+                for a1, a2 in ties
+            )
+
+            if st.button("Apply →", key="_qnext3", disabled=not all_answered):
+                adjusted_weights = _apply_tiebreak_adjustments(base_weights, ss.quiz_tiebreak)
+                ranking = sorted(adjusted_weights, key=lambda a: adjusted_weights[a], reverse=True)
+
+                ss.quiz_normalised_weights = adjusted_weights
+                ss.quiz_ranking = ranking
                 ss.quiz_final_ranking = ranking
                 ss.quiz_step = "done"
                 st.rerun()
+
         return {}, [], {}
 
     if ss.quiz_step == "done":
