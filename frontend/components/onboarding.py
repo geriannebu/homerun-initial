@@ -268,7 +268,7 @@ def _render_rank_list_with_buttons(rank):
             st.markdown(
                 f"""
                 <div style="
-                    padding-top:12px;
+                    padding-top:6px;
                     font-size:1.45rem;
                     font-weight:800;
                     color:#FF4458;
@@ -282,17 +282,17 @@ def _render_rank_list_with_buttons(rank):
 
         with card_col:
             with st.container(border=True):
-                icon_col, text_col = st.columns([0.8, 8])
+                icon_col, text_col = st.columns([0.5, 8])
 
                 with icon_col:
                     st.markdown(
-                        f"<div style='font-size:1.4rem;line-height:1.9;'>{AMENITY_ICONS.get(key, '•')}</div>",
+                        f"<div style='display:flex;align-items:center;min-height:2.2rem;margin-top:-0.4rem;font-size:1.4rem;'>{AMENITY_ICONS.get(key, '•')}</div>",
                         unsafe_allow_html=True,
                     )
 
                 with text_col:
                     st.markdown(
-                        f"<div style='padding-top:0.42rem;font-size:1.02rem;font-weight:700;color:#111827;'>{FRONTEND_AMENITY_LABELS.get(key, key)}</div>",
+                        f"<div style='display:flex;align-items:center;min-height:2.2rem;margin-top:-0.4rem;font-size:1.02rem;font-weight:700;color:#111827;'>{FRONTEND_AMENITY_LABELS.get(key, key)}</div>",
                         unsafe_allow_html=True,
                     )
 
