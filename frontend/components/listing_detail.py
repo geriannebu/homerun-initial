@@ -578,6 +578,7 @@ def show_listing_detail(payload: Dict[str, Any] | str | int, show_actions: bool 
             ("🏥 Healthcare", health_dist, health_walk, health_score),
             ("🛒 Supermarket", supermarket_dist, supermarket_walk, supermarket_score),
         ]
+        amenities_title = "Nearby amenities (median)" if bool(row.get("is_hypothetical", False)) else "Nearby amenities"
 
         has_amenity_scores = any(pd.notna(score) for _, _, _, score in amenities)
         
@@ -692,7 +693,7 @@ def show_listing_detail(payload: Dict[str, Any] | str | int, show_actions: bool 
         letter-spacing:0.08em;
         color:#94a3b8;
         margin-bottom:10px;">
-        Nearby amenities
+        {amenities_title}
     </div>
 
     {header_html}

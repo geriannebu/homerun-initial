@@ -1,4 +1,5 @@
 import copy
+from unittest import result
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -343,31 +344,77 @@ def _estimate_hypothetical_amenities(result: dict, listings_df: pd.DataFrame) ->
     if "town" not in df.columns or "flat_type" not in df.columns:
         return {}
 
-    df = df[
-        df["town"].fillna("").str.upper().eq(str(result["town"]).upper()) &
-        df["flat_type"].fillna("").str.upper().eq(str(result["flat_type"]).upper())
+    df["town"] = df["town"].fillna("").str.upper()
+    df["flat_type"] = df["flat_type"].fillna("").str.upper()
+
+    target_town = str(result["town"]).upper()
+    target_flat_type = str(result["flat_type"]).upper()
+    target_area = float(result["floor_area_sqm"])
+    target_lease = float(result["remaining_lease"])
+    target_storey = float(result["storey"])
+
+    base = df[(df["town"] == target_town) & (df["flat_type"] == target_flat_type)].copy()
+    if base.empty:
+        base = df[df["town"] == target_town].copy()
+
+    if base.empty:
+        return {}
+
+    if "floor_area_sqm" in base.columns:
+        base["floor_area_sqm_num"] = pd.to_numeric(base["floor_area_sqm"], errors="coerce")
+    else:
+        base["floor_area_sqm_num"] = np.nan
+
+    if "remaining_lease_years" in base.columns:
+        base["lease_num"] = pd.to_numeric(base["remaining_lease_years"], errors="coerce")
+    elif "remaining_lease" in base.columns:
+        base["lease_num"] = pd.to_numeric(base["remaining_lease"], errors="coerce")
+    else:
+        base["lease_num"] = np.nan
+
+    if "storey_midpoint" in base.columns:
+        base["storey_num"] = pd.to_numeric(base["storey_midpoint"], errors="coerce")
+    else:
+        base["storey_num"] = np.nan
+
+    matched = pd.DataFrame()
+
+    bands = [
+        (10, 3, 3),
+        (15, 5, 5),
+        (20, 8, 8),
+        (30, 12, 12),
+        (40, 20, 15),
+        (60, 30, 20),
     ]
 
-    if "floor_area_sqm" in df.columns:
-        area = pd.to_numeric(df["floor_area_sqm"], errors="coerce")
-        df = df[area.between(float(result["floor_area_sqm"]) - 15, float(result["floor_area_sqm"]) + 15)]
+    for area_band, lease_band, storey_band in bands:
+        candidate = base.copy()
 
-    lease_col = None
-    if "remaining_lease_years" in df.columns:
-        lease_col = "remaining_lease_years"
-    elif "remaining_lease" in df.columns:
-        lease_col = "remaining_lease"
+        if candidate["floor_area_sqm_num"].notna().any():
+            candidate = candidate[
+                candidate["floor_area_sqm_num"].between(target_area - area_band, target_area + area_band)
+            ]
 
-    if lease_col:
-        lease = pd.to_numeric(df[lease_col], errors="coerce")
-        df = df[lease.between(float(result["remaining_lease"]) - 5, float(result["remaining_lease"]) + 5)]
+        if candidate["lease_num"].notna().any():
+            candidate = candidate[
+                candidate["lease_num"].between(target_lease - lease_band, target_lease + lease_band)
+            ]
 
-    if "storey_midpoint" in df.columns:
-        storey = pd.to_numeric(df["storey_midpoint"], errors="coerce")
-        df = df[storey.between(float(result["storey"]) - 5, float(result["storey"]) + 5)]
+        if candidate["storey_num"].notna().any():
+            candidate = candidate[
+                candidate["storey_num"].between(target_storey - storey_band, target_storey + storey_band)
+            ]
 
-    if df.empty:
-        return {}
+        if len(candidate) >= 5:
+            matched = candidate
+            break
+
+        if len(candidate) > len(matched):
+            matched = candidate
+
+    if len(matched) < 5:
+        matched = base.copy()
 
     amenity_cols = [
         "train_1_dist_m",
@@ -386,20 +433,21 @@ def _estimate_hypothetical_amenities(result: dict, listings_df: pd.DataFrame) ->
         "walk_supermarket_min1",
     ]
 
-    usable_cols = [c for c in amenity_cols if c in df.columns]
+    usable_cols = [c for c in amenity_cols if c in matched.columns]
     if not usable_cols:
-        return {"similar_flats_used_for_amenities": len(df)}
+        return {"similar_flats_used_for_amenities": len(matched)}
 
-    medians = (
-        df[usable_cols]
-        .apply(pd.to_numeric, errors="coerce")
-        .median(numeric_only=True)
-        .to_dict()
-    )
-    medians["similar_flats_used_for_amenities"] = len(df)
+    numeric = matched[usable_cols].apply(pd.to_numeric, errors="coerce")
+
+    medians = numeric.median(numeric_only=True).to_dict()
+    medians = {k: v for k, v in medians.items() if pd.notna(v)}
+    medians["similar_flats_used_for_amenities"] = len(matched)
 
     return medians
 
+    amenity_estimates = _estimate_hypothetical_amenities(result, listings_df)
+    st.write("amenity_estimates", amenity_estimates)
+    result.update(amenity_estimates)
 
 def _build_hypothetical_result_row(result: dict) -> dict:
     row = {
@@ -461,7 +509,7 @@ def _render_hypothetical_price_predictor(inputs=None, listings_df: pd.DataFrame 
         "QUEENSTOWN", "SEMBAWANG", "SENGKANG", "SERANGOON", "TAMPINES",
         "TOA PAYOH", "WOODLANDS", "YISHUN"
     ]
-    flat_type_options = ["2 ROOM", "3 ROOM", "4 ROOM", "5 ROOM", "EXECUTIVE"]
+    flat_type_options = ["1 ROOM","2 ROOM", "3 ROOM", "4 ROOM", "5 ROOM", "EXECUTIVE", "MULTI_GENERATION"]
 
     inputs_town = getattr(inputs, "town", None) if inputs is not None else None
     inputs_flat_type = getattr(inputs, "flat_type", None) if inputs is not None else None
@@ -564,6 +612,10 @@ def _render_hypothetical_price_predictor(inputs=None, listings_df: pd.DataFrame 
         high = result.get("confidence_high")
         st.metric("95% CI high", fmt_sgd(high) if high is not None else "—")
 
+    used_n = result.get("similar_flats_used_for_amenities")
+    if used_n:
+        st.caption(f"Amenity estimates are based on {int(used_n)} similar flats in the dataset.")
+    
     hyp_row = _build_hypothetical_result_row(result)
 
     st.markdown("#### Snapshot")
