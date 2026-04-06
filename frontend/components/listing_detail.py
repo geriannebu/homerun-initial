@@ -179,10 +179,11 @@ def _score_color(score: float) -> str:
 
 def _proximity_bg(dist) -> tuple[str, str]:
     label = _proximity_label(dist)
+
     if label == "Very close":
-        return "#ecfdf5", "#059669"
+        return "#bbf7d0", "#166534"   # stronger dark green
     if label == "Close":
-        return "#eff6ff", "#2563eb"
+        return "#dcfce7", "#16a34a"   # softer light green
     if label == "Moderate":
         return "#fff7ed", "#d97706"
     return "#fef2f2", "#dc2626"
@@ -259,7 +260,6 @@ def _format_walk_minutes(mins):
     except Exception:
         return "N/A"
 
-
 def show_listing_detail(payload: Dict[str, Any] | str | int, show_actions: bool = True):
     import json
 
@@ -285,7 +285,8 @@ def show_listing_detail(payload: Dict[str, Any] | str | int, show_actions: bool 
 
     db_row, session_data = _find_listing_row(listing_id)
 
-    if db_row is not None:
+    # Only fall back to session lookup if a full row was not already passed in
+    if row is None and db_row is not None:
         row = db_row
         listing_id = str(db_row.get("listing_id", listing_id))
 
@@ -497,19 +498,19 @@ def show_listing_detail(payload: Dict[str, Any] | str | int, show_actions: bool 
                     </div>
                     <div style="display:flex;gap:12px;flex-wrap:wrap;">
                         <div style="flex:1;min-width:150px;padding:14px;border-radius:16px;background:#f8fafc;border:1px solid #e2e8f0;">
-                            <div style="font-size:0.74rem;color:#64748b;font-weight:700;">Amenity score</div>
+                            <div style="font-size:0.74rem;color:#64748b;font-weight:700;">Accessibility score</div>
                             <div style="font-size:1.35rem;font-weight:800;color:{amenity_color};margin-top:5px;">
                                 {amenity_score:.1f}/100
                             </div>
                         </div>
                         <div style="flex:1;min-width:150px;padding:14px;border-radius:16px;background:#f8fafc;border:1px solid #e2e8f0;">
-                            <div style="font-size:0.74rem;color:#64748b;font-weight:700;">Value score</div>
+                            <div style="font-size:0.74rem;color:#64748b;font-weight:700;">Value-for-money score</div>
                             <div style="font-size:1.35rem;font-weight:800;color:{value_color};margin-top:5px;">
                                 {value_score:.1f}/100
                             </div>
                         </div>
                         <div style="flex:1;min-width:150px;padding:14px;border-radius:16px;background:#f8fafc;border:1px solid #e2e8f0;">
-                            <div style="font-size:0.74rem;color:#64748b;font-weight:700;">Match score</div>
+                            <div style="font-size:0.74rem;color:#64748b;font-weight:700;">Overall score</div>
                             <div style="font-size:1.35rem;font-weight:800;color:{final_color};margin-top:5px;">
                                 {final_score:.1f}/100
                             </div>
@@ -581,7 +582,7 @@ def show_listing_detail(payload: Dict[str, Any] | str | int, show_actions: bool 
         amenities_title = "Nearby amenities (median)" if bool(row.get("is_hypothetical", False)) else "Nearby amenities"
 
         has_amenity_scores = any(pd.notna(score) for _, _, _, score in amenities)
-        
+
         if has_amenity_scores:
             header_html = """
 <div style="
@@ -598,29 +599,29 @@ def show_listing_detail(payload: Dict[str, Any] | str | int, show_actions: bool 
     font-family: Inter, system-ui, -apple-system, sans-serif;">
     <div>Amenity</div>
     <div>
-    <div>Proximity</div>
-    <div style="font-size:0.62rem;font-weight:600;text-transform:none;letter-spacing:0;color:#cbd5e1;">
-        to nearest amenity
+        <div>Proximity</div>
+        <div style="font-size:0.62rem;font-weight:600;text-transform:none;letter-spacing:0;color:#cbd5e1;">
+            to nearest amenity
+        </div>
     </div>
-</div>
-<div>
-    <div>Distance</div>
-    <div style="font-size:0.62rem;font-weight:600;text-transform:none;letter-spacing:0;color:#cbd5e1;">
-        to nearest amenity
-    </div>
-</div>
-<div>
-    <div>Route walk time</div>
-    <div style="font-size:0.62rem;font-weight:600;text-transform:none;letter-spacing:0;color:#cbd5e1;">
-        to nearest amenity
-    </div>
-</div>
     <div>
-    <div>Overall access score</div>
-    <div style="font-size:0.62rem;font-weight:600;text-transform:none;letter-spacing:0;color:#cbd5e1;">
-        based on walking times to nearby options
+        <div>Distance</div>
+        <div style="font-size:0.62rem;font-weight:600;text-transform:none;letter-spacing:0;color:#cbd5e1;">
+            to nearest amenity
+        </div>
     </div>
-</div>
+    <div>
+        <div>Route walk time</div>
+        <div style="font-size:0.62rem;font-weight:600;text-transform:none;letter-spacing:0;color:#cbd5e1;">
+            to nearest amenity
+        </div>
+    </div>
+    <div>
+        <div>Overall access score</div>
+        <div style="font-size:0.62rem;font-weight:600;text-transform:none;letter-spacing:0;color:#cbd5e1;">
+            based on walking times to nearby options
+        </div>
+    </div>
 </div>
 """
         else:

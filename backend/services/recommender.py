@@ -58,7 +58,16 @@ log = logging.getLogger(__name__)
 DATA_DIR      = Path("backend_predictor_listings/price_predictor/csv_outputs")
 LISTINGS_PATH = DATA_DIR / "listings_with_walking_times_full.csv"
 
-TAU_WALKING = 8.0    # minutes — exp(-t/TAU); score ≈ 0.37 at 8 min walk
+TAU_WALKING = 8.0    # kept as fallback
+TAU_BY_AMENITY = {
+    "train": 18.0,
+    "bus": 4.0,
+    "hawker": 22.0,
+    "mall": 20.0,
+    "polyclinic": 38.0,
+    "supermarket": 10.0,
+    "primary_school": 11.0,
+}
 VALUE_CLIP  = 0.10   # clip value_delta_pct to ±10% before normalising
 TOP_N       = 10     # listings returned for Tinder swipe
 
@@ -110,7 +119,7 @@ def _amenity_score(
     listing: pd.Series,
     amenity_ranking: list[str],
     scoring_weights: dict[str, float],
-    tau: float = TAU_WALKING,
+    tau_default: float = TAU_WALKING,
 ) -> tuple[float, dict[str, float]]:
     per_acc = {}
 
@@ -126,16 +135,14 @@ def _amenity_score(
             listing.get(f"walk_{col_key}_min3"),
         ]
 
-        times = [
-            t for t in times
-            if pd.notna(t)
-        ]
+        times = [t for t in times if pd.notna(t)]
 
         if not times:
             avg = listing.get(f"walk_{col_key}_avg_mins")
             if pd.notna(avg):
                 times = [avg]
 
+        tau = TAU_BY_AMENITY.get(amenity, tau_default)
         per_acc[amenity] = _avg_exp_decay(times, tau)
 
     score = sum(
