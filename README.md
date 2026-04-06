@@ -164,6 +164,16 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+### Run with Docker
+
+#### 1. Build the image
+docker build -t homerun-sg .
+
+#### 2. Run the app
+docker run -p 8501:8501 homerun-sg
+
+If port 8501 is busy, use:
+docker run -p 8502:8501 homerun-sg
 ---
 
 ## Key Dependencies
