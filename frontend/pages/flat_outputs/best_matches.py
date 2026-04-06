@@ -412,7 +412,7 @@ def render_listing_tab(listings_df: pd.DataFrame):
     )
     # Render ONLY the current card so visuals and details stay synced
     html = _build_single_card_html(json.dumps(current_card))
-    components.html(html, height=445, scrolling=False)
+    components.html(html, height=510, scrolling=False)
 
     score = current_card["final_score"]
     color = "#059E87" if score >= 75 else "#d97706" if score >= 50 else "#FF4458"
