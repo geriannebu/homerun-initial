@@ -52,6 +52,13 @@ def _val_color(label: str) -> str:
     return "#dc2626"
 
 
+def _capitalize_first(text: str) -> str:
+    text = str(text or "").strip()
+    if not text:
+        return ""
+    return text[0].upper() + text[1:]
+
+
 def _why_match(row, inputs, deck_df: pd.DataFrame | None = None) -> tuple[str, str]:
     rank = list(getattr(inputs, "amenity_rank", []) or [])
     top_amenities = rank[:3] if rank else []
@@ -207,7 +214,7 @@ def _why_match(row, inputs, deck_df: pd.DataFrame | None = None) -> tuple[str, s
         primary = secondary
         secondary = ""
 
-    return primary, secondary
+    return _capitalize_first(primary), _capitalize_first(secondary)
 
 def _sqm_to_sqft(area_sqm) -> int:
     try:

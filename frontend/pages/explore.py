@@ -12,6 +12,29 @@ def _safe_str(x):
     return "" if pd.isna(x) else str(x)
 
 
+def _sqm_to_sqft(val):
+    try:
+        if pd.isna(val):
+            return None
+        return round(float(val) * 10.7639)
+    except Exception:
+        return None
+
+
+def _sqft_to_sqm(val):
+    try:
+        if pd.isna(val):
+            return None
+        return round(float(val) / 10.7639, 1)
+    except Exception:
+        return None
+
+
+def _format_sqft_from_sqm(val, fallback="—"):
+    sqft = _sqm_to_sqft(val)
+    return f"{sqft:,} sqft" if sqft is not None else fallback
+
+
 # ---------------------------------------------------------------------------
 # Feature DF (historical transactions 2017–2026)
 # ---------------------------------------------------------------------------
@@ -191,7 +214,7 @@ def _render_flat_snapshot(row: pd.Series):
 
     meta_parts = [flat_type]
     if pd.notna(area):
-        meta_parts.append(f"{float(area):.1f} sqm")
+        meta_parts.append(_format_sqft_from_sqm(area))
     if pd.notna(storey) and str(storey).strip() and str(storey).lower() != "nan":
         meta_parts.append(f"Storey {storey}")
 
@@ -448,6 +471,7 @@ def _compute_amenity_score_from_distances(spatial: dict) -> dict:
 
 
 def _build_hypothetical_result_row(result: dict) -> dict:
+    area_sqft_text = _format_sqft_from_sqm(result["floor_area_sqm"])
     row = {
         "listing_id": (
             f"HYP-{result['town']}-{result['flat_type']}-"
@@ -455,7 +479,7 @@ def _build_hypothetical_result_row(result: dict) -> dict:
         ),
         "address": (
             f"Hypothetical flat · {result['town']} · {result['flat_type']} · "
-            f"{int(result['floor_area_sqm'])} sqm · Storey {int(result['storey'])}"
+            f"{area_sqft_text} · Storey {int(result['storey'])}"
         ),
         "town": result["town"],
         "flat_type": result["flat_type"],
@@ -577,7 +601,7 @@ def _price_estimate_card(predicted_price, confidence_low, confidence_high,
     if confidence_low and confidence_high:
         ci_text = f"{fmt_sgd(confidence_low)} – {fmt_sgd(confidence_high)}"
     detail = (
-        f"{flat_type} &nbsp;·&nbsp; {float(floor_area):.0f} sqm"
+        f"{flat_type} &nbsp;·&nbsp; {_format_sqft_from_sqm(floor_area)}"
         f" &nbsp;·&nbsp; Storey {storey}"
         f" &nbsp;·&nbsp; {int(lease)} yrs lease"
     )
@@ -629,7 +653,7 @@ def _two_price_cards(model_price, conf_low, conf_high, median_price, median_coun
     has_median = bool(median_price and median_count)
     count_text = f"{median_count:,} transactions" if has_median else "No recent data"
     median_note = (
-        "Same town &amp; flat type, ±20 sqm, similar lease · past 6 months"
+        "Same town &amp; flat type, ±215 sqft, similar lease · past 6 months"
         if has_median else
         "No transactions matched this profile in the past 6 months — try adjusting floor area or lease."
     )
@@ -775,7 +799,7 @@ def _render_flat_lookup(inputs, feature_df: pd.DataFrame):
     if "txn_date" in addr_df.columns:
         disp_cols["txn_date"] = "Month"
     if "floor_area_sqm" in addr_df.columns:
-        disp_cols["floor_area_sqm"] = "Floor area (sqm)"
+        disp_cols["floor_area_sqm"] = "Floor area (sqft)"
     if "storey_midpoint" in addr_df.columns:
         disp_cols["storey_midpoint"] = "Storey range"
     if "remaining_lease" in addr_df.columns:
@@ -789,9 +813,9 @@ def _render_flat_lookup(inputs, feature_df: pd.DataFrame):
         show_df["Transacted price"] = show_df["Transacted price"].apply(
             lambda x: f"${x:,.0f}" if pd.notna(x) and float(x) > 0 else "—"
         )
-    if "Floor area (sqm)" in show_df.columns:
-        show_df["Floor area (sqm)"] = show_df["Floor area (sqm)"].apply(
-            lambda x: f"{float(x):.0f}" if pd.notna(x) else "—"
+    if "Floor area (sqft)" in show_df.columns:
+        show_df["Floor area (sqft)"] = show_df["Floor area (sqft)"].apply(
+            lambda x: f"{_sqm_to_sqft(x):,}" if _sqm_to_sqft(x) is not None else "—"
         )
     if "Remaining lease" in show_df.columns:
         show_df["Remaining lease"] = show_df["Remaining lease"].apply(_fmt_lease)
@@ -808,20 +832,21 @@ def _render_flat_lookup(inputs, feature_df: pd.DataFrame):
 
     # --- Floor area: dropdown of unique values from past transactions ---
     raw_areas = sorted(pd.to_numeric(addr_df["floor_area_sqm"], errors="coerce").dropna().unique())
-    area_options = [f"{int(a)} sqm" for a in raw_areas] if raw_areas else ["90 sqm"]
+    area_options = raw_areas if raw_areas else [90.0]
     area_counts = addr_df["floor_area_sqm"].dropna().apply(lambda x: int(float(x))).value_counts()
     most_common_area = int(area_counts.index[0]) if not area_counts.empty else 90
     default_area_idx = next(
-        (i for i, s in enumerate(area_options) if s == f"{most_common_area} sqm"), 0
+        (i for i, area in enumerate(area_options) if int(float(area)) == most_common_area), 0
     )
-    selected_area_str = st.selectbox(
+    selected_area = st.selectbox(
         "Floor area",
         options=area_options,
         index=default_area_idx,
         key="explore_lookup_area",
+        format_func=lambda area: _format_sqft_from_sqm(area),
         help="Choose from floor areas recorded in past transactions at this block.",
     )
-    selected_area = float(selected_area_str.replace(" sqm", ""))
+    selected_area = float(selected_area)
 
     # --- Remaining lease: auto-calculated from lease_commence_date ---
     today = pd.Timestamp.today()
@@ -840,34 +865,12 @@ def _render_flat_lookup(inputs, feature_df: pd.DataFrame):
         remaining_today = max(0.0, latest_rl - (current_mi - latest_mi) / 12)
         expiry_year = today.year + remaining_today
 
-    sale_mode = st.radio(
-        "Estimate for",
-        options=["Today", "A future sale date"],
-        horizontal=True,
-        key="explore_lookup_sale_mode",
+    remaining_for_pred = max(1, int(round(remaining_today)))
+    lc_str = str(lease_commence) if lease_commence else "—"
+    st.caption(
+        f"Selling today. Remaining lease today: ~{remaining_for_pred} yrs "
+        f"(commenced {lc_str}, expires {int(expiry_year)})"
     )
-    if sale_mode == "A future sale date":
-        max_yr = max(today.year + 1, int(expiry_year) - 1)
-        sale_year = st.slider(
-            "Estimated sale year",
-            min_value=today.year,
-            max_value=max_yr,
-            value=min(today.year + 5, max_yr),
-            key="explore_lookup_sale_year",
-        )
-        remaining_for_pred = max(1, int(expiry_year - sale_year))
-        st.caption(
-            f"At {sale_year}: ~{remaining_for_pred} yrs remaining lease "
-            f"(lease expires {int(expiry_year)})"
-        )
-    else:
-        remaining_for_pred = max(1, int(round(remaining_today)))
-        lc_str = str(lease_commence) if lease_commence else "—"
-        st.caption(
-            f"Remaining lease today: ~{remaining_for_pred} yrs "
-            f"(commenced {lc_str}, expires {int(expiry_year)})"
-        )
-        sale_year = today.year
 
     # --- Storey: number input, default = median storey at this address ---
     if "storey_midpoint" in addr_df.columns:
@@ -939,19 +942,36 @@ def _render_flat_lookup(inputs, feature_df: pd.DataFrame):
         hyp_row["town"] = town_for_pred
         hyp_row["flat_type"] = flat_type_for_pred
 
+        saved_flash_key = "explore_lookup_saved_result"
+        if st.session_state.get(saved_flash_key) == result_key:
+            st.success("Flat saved to Saved tab.")
+            st.session_state.pop(saved_flash_key, None)
+
         if not _is_row_already_saved(hyp_row):
-            if st.button("Save flat", key="explore_lookup_save_btn", use_container_width=True):
-                hyp_row["comparison_source"] = "Explore"
-                if _save_extra_row(hyp_row):
-                    st.success("Flat saved to Saved tab.")
+            save_col, review_col = st.columns([1.2, 1])
+            with save_col:
+                if st.button("♥ Save flat", key="explore_lookup_save_btn", type="primary", use_container_width=True):
+                    hyp_row["comparison_source"] = "Explore"
+                    if _save_extra_row(hyp_row):
+                        st.session_state[saved_flash_key] = result_key
+                        st.rerun()
+            with review_col:
+                if st.button("Review saved →", key="explore_lookup_review_saved_btn", use_container_width=True):
+                    st.session_state.active_page = "Saved"
                     st.rerun()
         else:
-            st.button(
-                "Saved ♥",
-                key="explore_lookup_saved_disabled",
-                disabled=True,
-                use_container_width=True,
-            )
+            saved_col, review_col = st.columns([1.2, 1])
+            with saved_col:
+                st.button(
+                    "Saved ♥",
+                    key="explore_lookup_saved_disabled",
+                    disabled=True,
+                    use_container_width=True,
+                )
+            with review_col:
+                if st.button("Review saved →", key="explore_lookup_saved_review_btn", use_container_width=True):
+                    st.session_state.active_page = "Saved"
+                    st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -988,6 +1008,7 @@ def _render_explore_flat_profile(inputs=None, listings_df: pd.DataFrame = None, 
         default_town = "ANG MO KIO"
     default_flat_type = inputs_flat_type if inputs_flat_type in flat_type_options else "4 ROOM"
     default_area = float(inputs_floor_area) if inputs_floor_area else 90.0
+    default_area_sqft = _sqm_to_sqft(default_area) or 969
     default_lease = int(inputs_lease) if inputs_lease else 70
 
     c1, c2 = st.columns(2)
@@ -999,12 +1020,12 @@ def _render_explore_flat_profile(inputs=None, listings_df: pd.DataFrame = None, 
             index=town_options.index(default_town),
             key="explore_profile_town",
         )
-        hyp_floor_area = st.slider(
-            "Floor area (sqm)",
-            min_value=20.0,
-            max_value=300.0,
-            value=float(default_area),
-            step=1.0,
+        hyp_floor_area_sqft = st.slider(
+            "Floor area (sqft)",
+            min_value=215,
+            max_value=3229,
+            value=int(default_area_sqft),
+            step=11,
             key="explore_profile_area",
         )
         hyp_storey = st.number_input(
@@ -1044,6 +1065,7 @@ def _render_explore_flat_profile(inputs=None, listings_df: pd.DataFrame = None, 
             return
 
         try:
+            hyp_floor_area = _sqft_to_sqm(hyp_floor_area_sqft)
             result = predict_hypothetical(
                 floor_area_sqm=hyp_floor_area,
                 town=hyp_town,
