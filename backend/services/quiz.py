@@ -300,8 +300,10 @@ def render_quiz() -> tuple[dict[str, float], list[str], dict[str, float]]:
         c1, c2 = st.columns([1, 5])
         with c1:
             if st.button("← Back", key="_qback3"):
-                ss.quiz_step = "quiz"
+                questions = _build_active_questions(ss.quiz_selected)
+                ss.quiz_step = "quiz" if questions else "select"
                 st.rerun()
+                
         with c2:
             if st.button("Apply →", key="_qnext3"):
                 for a1, a2 in ties:
