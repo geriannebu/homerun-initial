@@ -70,17 +70,8 @@ def get_prediction_bundle(inputs: UserInputs, ranking_profile: str = "balanced")
         top_n=10,
     )
 
-    scored_listings = rec["top"].copy()
-
-    if "final_score" in scored_listings.columns:
-        scored_listings = (
-            scored_listings
-            .sort_values("final_score", ascending=False)
-            .head(10)
-            .reset_index(drop=True)
-        )
-    else:
-        scored_listings = scored_listings.head(10).reset_index(drop=True)
+    # rec["top"] is already top-N and scrambled by run_recommender — preserve that order
+    scored_listings = rec["top"].copy().reset_index(drop=True)
 
     viable_count = len(scored_listings)
 

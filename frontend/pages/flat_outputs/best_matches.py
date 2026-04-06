@@ -176,8 +176,9 @@ def _get_ranked_unseen_df(listings_df: pd.DataFrame, unseen_ids: list) -> pd.Dat
     df["listing_id"] = df["listing_id"].astype(str)
     df = df[df["listing_id"].isin(unseen_ids)]
 
-    if "final_score" in df.columns:
-        df = df.sort_values("final_score", ascending=False)
+    # Preserve the scrambled order from unseen_ids (set by recommender's top.sample)
+    id_order = {lid: i for i, lid in enumerate(unseen_ids)}
+    df = df.sort_values("listing_id", key=lambda s: s.map(id_order))
 
     return df
 
