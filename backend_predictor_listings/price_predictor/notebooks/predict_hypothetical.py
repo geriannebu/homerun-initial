@@ -217,3 +217,41 @@ def predict_hypothetical(floor_area_sqm, town, flat_type, remaining_lease_years,
         "remaining_lease": int(remaining_lease_years),
         "storey": int(storey)
     }
+
+
+def predict_with_spatial_overrides(
+    floor_area_sqm, town, flat_type, remaining_lease_years, storey,
+    spatial_features: dict
+):
+    """
+    Like predict_hypothetical but replaces imputed group-median spatial features
+    with actual values supplied by the caller (e.g. extracted from feature_df
+    for a specific block).
+    spatial_features: dict of {column_name: value} for any subset of _MEDIAN_COLS.
+    """
+    X = _build_hypothetical_features(floor_area_sqm, town, flat_type, remaining_lease_years, storey)
+    for col, val in spatial_features.items():
+        if col in X.columns:
+            X[col] = float(val)
+    for col in ["town", "flat_type"]:
+        X[col] = X[col].astype("category")
+
+    pred_real = _predict(_models, X)[0]
+    pred_nominal = round(pred_real * (RPI_CURRENT / RPI_BASE))
+
+    ci_low = ci_high = None
+    if _CI_OFFSETS:
+        rpi_factor = RPI_CURRENT / RPI_BASE
+        ci_low = round((pred_real + _CI_OFFSETS["p025_real"]) * rpi_factor)
+        ci_high = round((pred_real + _CI_OFFSETS["p975_real"]) * rpi_factor)
+
+    return {
+        "predicted_price": int(pred_nominal),
+        "confidence_low": int(ci_low) if ci_low is not None else None,
+        "confidence_high": int(ci_high) if ci_high is not None else None,
+        "town": town.upper().strip(),
+        "flat_type": flat_type.upper().strip(),
+        "floor_area_sqm": float(floor_area_sqm),
+        "remaining_lease": int(remaining_lease_years),
+        "storey": int(storey)
+    }

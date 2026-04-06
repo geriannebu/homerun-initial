@@ -54,35 +54,6 @@ def _load_feature_df_cached():
     return df
 
 
-def _search_feature_df_addresses(query: str, feature_df: pd.DataFrame, max_results: int = 20) -> list:
-    """Token-prefix fuzzy search on display_address. Returns list of unique matched addresses."""
-    if not query or not query.strip():
-        return []
-
-    q = query.strip().upper()
-    q_tokens = q.split()
-    unique_addrs = feature_df["display_address"].dropna().unique()
-
-    scored = []
-    for addr in unique_addrs:
-        a = str(addr)
-        # Full substring match → highest priority
-        if q in a:
-            scored.append((addr, 2.0))
-            continue
-        # Token-prefix overlap: "AVE" matches "AVENUE", "10" matches "10", etc.
-        a_tokens = set(a.split())
-        matched = sum(
-            1 for t in q_tokens
-            if any(t == at or at.startswith(t) or t.startswith(at) for at in a_tokens)
-        )
-        score = matched / len(q_tokens) if q_tokens else 0
-        if score >= 0.5:
-            scored.append((addr, score))
-
-    scored.sort(key=lambda x: (-x[1], x[0]))
-    return [addr for addr, _ in scored[:max_results]]
-
 
 def _compute_feature_df_median(
     feature_df: pd.DataFrame,
@@ -399,6 +370,83 @@ def _estimate_hypothetical_amenities(result: dict, listings_df: pd.DataFrame) ->
     return medians
 
 
+_SPATIAL_COLS = [
+    "lat", "lon",
+    "mall_1_dist_m", "mall_2_dist_m", "mall_3_dist_m",
+    "school_1_dist_m", "school_2_dist_m", "school_3_dist_m",
+    "hawker_1_dist_m", "hawker_2_dist_m", "hawker_3_dist_m",
+    "polyclinic_1_dist_m", "polyclinic_2_dist_m", "polyclinic_3_dist_m",
+    "supermarket_1_dist_m", "supermarket_2_dist_m", "supermarket_3_dist_m",
+    "train_1_dist_m", "train_2_dist_m", "train_3_dist_m",
+    "bus_1_dist_m", "bus_2_dist_m", "bus_3_dist_m",
+    "num_mrt_within_1km", "flag_mrt_within_500m",
+    "num_primary_schools_within_1km", "num_hawkers_within_500m",
+    "num_bus_within_400m", "dist_cbd",
+]
+
+_AMENITY_DIST_COLS = {
+    "train_1_dist_m":       "mrt",
+    "bus_1_dist_m":         "bus",
+    "school_1_dist_m":      "schools",
+    "hawker_1_dist_m":      "hawker",
+    "mall_1_dist_m":        "retail",
+    "polyclinic_1_dist_m":  "healthcare",
+    "supermarket_1_dist_m": "supermarket",
+}
+
+
+def _dist_score(dist_m) -> int:
+    """Replicate scoring.py _distance_score for a single distance value."""
+    try:
+        d = float(dist_m)
+        if np.isnan(d):
+            return 40
+    except (TypeError, ValueError):
+        return 40
+    if d <= 300:
+        return 90
+    elif d <= 600:
+        return 75
+    elif d <= 1000:
+        return 60
+    return 40
+
+
+def _compute_block_spatial_features(addr_df: pd.DataFrame) -> dict:
+    """
+    Extract spatial feature values for a block from feature_df.
+    All spatial columns are identical for every unit in the same block,
+    so we simply take the first row's values.
+    Returns a dict suitable for passing to predict_with_spatial_overrides.
+    """
+    out = {}
+    first = addr_df.iloc[0]
+    for col in _SPATIAL_COLS:
+        if col in addr_df.columns:
+            val = pd.to_numeric(first[col], errors="coerce")
+            if pd.notna(val):
+                out[col] = float(val)
+    return out
+
+
+def _compute_amenity_score_from_distances(spatial: dict) -> dict:
+    """
+    Given a spatial features dict (from _compute_block_spatial_features),
+    compute distance-bracket amenity scores matching scoring.py logic.
+    Returns a dict with individual scores and overall amenity_score.
+    """
+    scores = {}
+    raw_scores = []
+    for dist_col, key in _AMENITY_DIST_COLS.items():
+        if dist_col in spatial:
+            s = _dist_score(spatial[dist_col])
+            scores[f"{key}_score"] = s
+            raw_scores.append(s)
+    if raw_scores:
+        scores["amenity_score"] = round(float(np.mean(raw_scores)), 1)
+    return scores
+
+
 def _build_hypothetical_result_row(result: dict) -> dict:
     row = {
         "listing_id": (
@@ -424,24 +472,32 @@ def _build_hypothetical_result_row(result: dict) -> dict:
         "similar_flats_used_for_amenities": result.get("similar_flats_used_for_amenities"),
     }
 
-    amenity_cols = [
-        "train_1_dist_m",
-        "bus_1_dist_m",
-        "school_1_dist_m",
-        "hawker_1_dist_m",
-        "mall_1_dist_m",
-        "polyclinic_1_dist_m",
+    # Copy all spatial feature columns present in result
+    passthrough_cols = [
+        "train_1_dist_m", "bus_1_dist_m", "school_1_dist_m",
+        "hawker_1_dist_m", "mall_1_dist_m", "polyclinic_1_dist_m",
         "supermarket_1_dist_m",
-        "walk_train_min1",
-        "walk_bus_min1",
-        "walk_primary_school_min1",
-        "walk_hawker_min1",
-        "walk_mall_min1",
-        "walk_polyclinic_min1",
+        "train_2_dist_m", "train_3_dist_m",
+        "bus_2_dist_m", "bus_3_dist_m",
+        "school_2_dist_m", "school_3_dist_m",
+        "hawker_2_dist_m", "hawker_3_dist_m",
+        "mall_2_dist_m", "mall_3_dist_m",
+        "polyclinic_2_dist_m", "polyclinic_3_dist_m",
+        "supermarket_2_dist_m", "supermarket_3_dist_m",
+        "lat", "lon", "dist_cbd",
+        "num_mrt_within_1km", "flag_mrt_within_500m",
+        "num_primary_schools_within_1km", "num_hawkers_within_500m",
+        "num_bus_within_400m",
+        "walk_train_min1", "walk_bus_min1", "walk_primary_school_min1",
+        "walk_hawker_min1", "walk_mall_min1", "walk_polyclinic_min1",
         "walk_supermarket_min1",
+        # pre-computed scores from _compute_amenity_score_from_distances
+        "amenity_score",
+        "mrt_score", "bus_score", "schools_score",
+        "hawker_score", "retail_score", "healthcare_score", "supermarket_score",
     ]
 
-    for col in amenity_cols:
+    for col in passthrough_cols:
         if col in result:
             row[col] = result[col]
 
@@ -453,16 +509,18 @@ def _build_hypothetical_result_row(result: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def _tab_intro(eyebrow: str, headline: str, body: str):
-    """Magazine-style section intro — no borders, pure type hierarchy."""
+    """Magazine-style section intro with pill eyebrow."""
     st.markdown(
         f"""
-        <div style="padding:2px 0 22px;border-bottom:1px solid #f0f0f0;margin-bottom:28px;">
-            <div style="font-size:0.67rem;font-weight:700;text-transform:uppercase;
-                        letter-spacing:0.14em;color:#FF4458;margin-bottom:9px;">{eyebrow}</div>
-            <div style="font-size:1.12rem;font-weight:800;color:#1a1a2e;
-                        line-height:1.3;margin-bottom:9px;">{headline}</div>
-            <div style="font-size:0.87rem;color:#555577;line-height:1.68;
-                        max-width:540px;">{body}</div>
+        <div style="padding:4px 0 24px;border-bottom:2px solid #f4f4f8;margin-bottom:26px;">
+            <span style="display:inline-block;background:#FF4458;color:#fff;
+                         font-size:0.6rem;font-weight:700;text-transform:uppercase;
+                         letter-spacing:0.13em;padding:3px 9px;border-radius:4px;
+                         margin-bottom:11px;">{eyebrow}</span>
+            <div style="font-size:1.15rem;font-weight:800;color:#1a1a2e;
+                        line-height:1.3;margin-bottom:8px;">{headline}</div>
+            <div style="font-size:0.84rem;color:#64748b;line-height:1.65;
+                        max-width:520px;">{body}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -470,43 +528,20 @@ def _tab_intro(eyebrow: str, headline: str, body: str):
 
 
 def _section_rule(label: str):
-    """Thin rule + uppercase label — editorial section break."""
+    """Section break with coloured left accent bar."""
     st.markdown(
         f"""
-        <div style="display:flex;align-items:center;gap:12px;margin:26px 0 14px;">
+        <div style="display:flex;align-items:center;gap:10px;margin:28px 0 16px;">
+            <div style="width:3px;height:15px;background:#FF4458;
+                        border-radius:2px;flex-shrink:0;"></div>
             <div style="font-size:0.63rem;font-weight:700;text-transform:uppercase;
-                        letter-spacing:0.14em;color:#c0c0cc;white-space:nowrap;">{label}</div>
-            <div style="flex:1;height:1px;background:#f0f0f0;"></div>
+                        letter-spacing:0.14em;color:#1a1a2e;white-space:nowrap;">{label}</div>
+            <div style="flex:1;height:1px;background:#ebebf0;"></div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-
-def _no_results_state(query: str):
-    """Centered empty state with redirect nudge to Tab 2."""
-    st.markdown(
-        f"""
-        <div style="text-align:center;padding:44px 20px 36px;">
-            <div style="font-size:1.6rem;color:#e0e0e0;margin-bottom:14px;
-                        letter-spacing:0.2em;">— ○ —</div>
-            <div style="font-size:1rem;font-weight:800;color:#1a1a2e;margin-bottom:10px;">
-                Nothing found for &ldquo;{query}&rdquo;
-            </div>
-            <div style="font-size:0.85rem;color:#555577;line-height:1.7;
-                        max-width:360px;margin:0 auto 20px;">
-                This block may not have been transacted since 2017 — or try spelling
-                out the street name in full
-                (e.g. <em>Ang Mo Kio Ave 10</em>, not <em>AMK Ave 10</em>).
-            </div>
-            <div style="display:inline-block;font-size:0.83rem;font-weight:700;
-                        color:#FF4458;border-bottom:1.5px solid #FF4458;padding-bottom:1px;">
-                Try the Explore a flat profile tab to estimate by town &amp; type →
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 def _address_result_header(address: str, town: str, flat_type: str, txn_count: int):
@@ -537,46 +572,46 @@ def _address_result_header(address: str, town: str, flat_type: str, txn_count: i
 
 def _price_estimate_card(predicted_price, confidence_low, confidence_high,
                          floor_area, flat_type, storey, lease):
-    """Full-width light card — the hero result for Tab 1."""
+    """Full-width prediction card for Tab 1."""
     ci_text = ""
     if confidence_low and confidence_high:
-        ci_text = f"{fmt_sgd(confidence_low)} &nbsp;—&nbsp; {fmt_sgd(confidence_high)}"
+        ci_text = f"{fmt_sgd(confidence_low)} – {fmt_sgd(confidence_high)}"
     detail = (
         f"{flat_type} &nbsp;·&nbsp; {float(floor_area):.0f} sqm"
         f" &nbsp;·&nbsp; Storey {storey}"
-        f" &nbsp;·&nbsp; {int(lease)} yrs remaining lease"
+        f" &nbsp;·&nbsp; {int(lease)} yrs lease"
     )
     year = pd.Timestamp.today().year
     st.markdown(
         f"""
-        <div style="
-            background:#f8fafc;
-            border:1.5px solid #e2e8f0;
-            border-top:3px solid #6366f1;
-            border-radius:16px;
-            padding:26px 28px;
-            margin:18px 0 14px;
-        ">
-            <div style="font-size:0.63rem;font-weight:700;text-transform:uppercase;
-                        letter-spacing:0.14em;color:#6366f1;margin-bottom:14px;">
-                Model estimate &nbsp;·&nbsp; {year}
-            </div>
-            <div style="font-size:2.4rem;font-weight:800;color:#0f172a;
-                        line-height:1;letter-spacing:-0.01em;margin-bottom:6px;">
-                {fmt_sgd(predicted_price) if pd.notna(predicted_price) else "—"}
-            </div>
-            <div style="font-size:0.78rem;color:#94a3b8;margin-bottom:18px;">
-                {"95% confidence range: " + ci_text if ci_text else "&nbsp;"}
-            </div>
-            <div style="border-top:1px solid #e2e8f0;padding-top:14px;">
-                <div style="font-size:0.79rem;color:#475569;margin-bottom:8px;">{detail}</div>
-                <div style="font-size:0.73rem;color:#94a3b8;line-height:1.6;">
-                    <strong style="color:#64748b;">How this works:</strong>
-                    We use this flat's actual floor area, storey, and remaining lease from its last transaction.
-                    Three ML models (CatBoost, XGBoost, LightGBM) — trained on 228,000 HDB resale transactions
-                    from 2017–2026 — produce a fair-value estimate, which is then scaled to today's
-                    price level using the HDB Resale Price Index (currently at {pd.Timestamp.today().year}).
+        <div style="background:linear-gradient(135deg,#fff8f8 0%,#ffffff 60%);
+                    border:1px solid #fecdd3;border-left:4px solid #FF4458;
+                    border-radius:0 16px 16px 0;padding:24px 26px;margin:14px 0 10px;
+                    box-shadow:0 4px 16px rgba(255,68,88,0.08);">
+            <div style="display:flex;align-items:flex-start;
+                        justify-content:space-between;gap:20px;flex-wrap:wrap;">
+                <div>
+                    <div style="font-size:0.6rem;font-weight:700;text-transform:uppercase;
+                                letter-spacing:0.14em;color:#FF4458;margin-bottom:10px;">
+                        Model estimate &nbsp;·&nbsp; {year}
+                    </div>
+                    <div style="font-size:2.6rem;font-weight:800;color:#1a1a2e;
+                                line-height:1;letter-spacing:-0.02em;">
+                        {fmt_sgd(predicted_price) if pd.notna(predicted_price) else "—"}
+                    </div>
+                    {"<div style='font-size:0.76rem;color:#9ca3af;margin-top:7px;'>95% range: " + ci_text + "</div>" if ci_text else ""}
                 </div>
+                <div style="font-size:0.74rem;color:#64748b;line-height:1.7;
+                            max-width:240px;padding-top:2px;border-left:1px solid #fecdd3;
+                            padding-left:18px;">
+                    Uses actual MRT, school &amp; amenity distances for <strong>this specific block</strong>
+                    from historical transactions — not estimated averages.
+                    Trained on 228k HDB resales, scaled to today via the HDB Resale Price Index.
+                </div>
+            </div>
+            <div style="border-top:1px solid #fee2e6;margin-top:16px;padding-top:11px;
+                        font-size:0.74rem;color:#94a3b8;letter-spacing:0.01em;">
+                {detail}
             </div>
         </div>
         """,
@@ -585,54 +620,64 @@ def _price_estimate_card(predicted_price, confidence_low, confidence_high,
 
 
 def _two_price_cards(model_price, conf_low, conf_high, median_price, median_count):
-    """Light side-by-side comparison — model estimate vs market median."""
+    """Side-by-side model estimate vs market median for Tab 2."""
     ci_text = (
-        f"{fmt_sgd(conf_low)} &nbsp;—&nbsp; {fmt_sgd(conf_high)}"
+        f"{fmt_sgd(conf_low)} – {fmt_sgd(conf_high)}"
         if conf_low and conf_high else ""
     )
     median_display = fmt_sgd(median_price) if median_price else "—"
-    count_text = f"Based on {median_count:,} transactions" if median_count else "Insufficient data"
+    has_median = bool(median_price and median_count)
+    count_text = f"{median_count:,} transactions" if has_median else "No recent data"
+    median_note = (
+        "Same town &amp; flat type, ±20 sqm, similar lease · past 6 months"
+        if has_median else
+        "No transactions matched this profile in the past 6 months — try adjusting floor area or lease."
+    )
+    year = pd.Timestamp.today().year
     st.markdown(
         f"""
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0 14px;">
-            <div style="background:#f8fafc;border:1.5px solid #e2e8f0;
-                        border-top:3px solid #6366f1;border-radius:16px;padding:22px 24px;">
-                <div style="font-size:0.63rem;font-weight:700;text-transform:uppercase;
-                            letter-spacing:0.14em;color:#6366f1;margin-bottom:12px;">
-                    Model estimate
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0 10px;">
+            <div style="background:linear-gradient(135deg,#fff8f8 0%,#ffffff 60%);
+                        border:1px solid #fecdd3;border-left:4px solid #FF4458;
+                        border-radius:0 16px 16px 0;padding:22px 22px;
+                        box-shadow:0 4px 16px rgba(255,68,88,0.07);">
+                <div style="font-size:0.6rem;font-weight:700;text-transform:uppercase;
+                            letter-spacing:0.14em;color:#FF4458;margin-bottom:10px;">
+                    Model estimate &nbsp;·&nbsp; {year}
                 </div>
-                <div style="font-size:1.85rem;font-weight:800;color:#0f172a;
-                            line-height:1;letter-spacing:-0.01em;margin-bottom:6px;">
+                <div style="font-size:2rem;font-weight:800;color:#1a1a2e;
+                            line-height:1;letter-spacing:-0.02em;margin-bottom:6px;">
                     {fmt_sgd(model_price)}
                 </div>
-                <div style="font-size:0.74rem;color:#94a3b8;margin-bottom:14px;">
-                    {"95% range: " + ci_text if ci_text else "&nbsp;"}
-                </div>
-                <div style="border-top:1px solid #e2e8f0;padding-top:12px;
-                            font-size:0.73rem;color:#64748b;line-height:1.6;">
-                    <strong>What this is:</strong> Our ML model's fair-value estimate based on
-                    your chosen profile. Location features (MRT proximity, schools, etc.) are
-                    filled in from the typical values for that town and flat type.
+                {"<div style='font-size:0.73rem;color:#9ca3af;margin-bottom:12px;'>95% range: " + ci_text + "</div>" if ci_text else "<div style='margin-bottom:12px;'></div>"}
+                <div style="border-top:1px solid #fee2e6;padding-top:11px;
+                            font-size:0.72rem;color:#64748b;line-height:1.65;">
+                    ML fair-value. Location features estimated from
+                    typical values for this town &amp; flat type.
                 </div>
             </div>
-            <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;
-                        border-top:3px solid #0d9488;border-radius:16px;padding:22px 24px;">
-                <div style="font-size:0.63rem;font-weight:700;text-transform:uppercase;
-                            letter-spacing:0.14em;color:#0d9488;margin-bottom:12px;">
-                    Median transacted &nbsp;·&nbsp; last 24 months
+            <div style="background:{'linear-gradient(135deg,#f0fdf9 0%,#ffffff 60%)' if has_median else '#fafafa'};
+                        border:1px solid {'#99f6e4' if has_median else '#e5e7eb'};
+                        border-left:4px solid {'#0d9488' if has_median else '#d1d5db'};
+                        border-radius:0 16px 16px 0;padding:22px 22px;
+                        box-shadow:0 4px 16px rgba(13,148,136,{'0.07' if has_median else '0'});
+                        {'opacity:0.65;' if not has_median else ''}">
+                <div style="font-size:0.6rem;font-weight:700;text-transform:uppercase;
+                            letter-spacing:0.14em;
+                            color:{'#0d9488' if has_median else '#9ca3af'};margin-bottom:10px;">
+                    Median transacted &nbsp;·&nbsp; last 6 months
                 </div>
-                <div style="font-size:1.85rem;font-weight:800;color:#0f172a;
-                            line-height:1;letter-spacing:-0.01em;margin-bottom:6px;">
+                <div style="font-size:2rem;font-weight:800;color:#1a1a2e;
+                            line-height:1;letter-spacing:-0.02em;margin-bottom:6px;">
                     {median_display}
                 </div>
-                <div style="font-size:0.74rem;color:#0d9488;margin-bottom:14px;">
+                <div style="font-size:0.73rem;color:{'#0d9488' if has_median else '#9ca3af'};
+                            margin-bottom:12px;font-weight:{'600' if has_median else '400'};">
                     {count_text}
                 </div>
-                <div style="border-top:1px solid #bbf7d0;padding-top:12px;
-                            font-size:0.73rem;color:#374151;line-height:1.6;">
-                    <strong>What this is:</strong> The median price buyers actually paid for
-                    similar flats (same town, flat type, ±20 sqm, similar lease) over
-                    the past 2 years — real market data, not a model.
+                <div style="border-top:1px solid {'#99f6e4' if has_median else '#e5e7eb'};
+                            padding-top:11px;font-size:0.72rem;color:#64748b;line-height:1.65;">
+                    {median_note}
                 </div>
             </div>
         </div>
@@ -659,27 +704,19 @@ def _render_flat_lookup(inputs, feature_df: pd.DataFrame):
         st.info("Historical transaction data is not available.")
         return
 
-    search_query = st.text_input(
-        "Search by block and street",
-        placeholder="e.g. 406 Ang Mo Kio Ave 10",
-        key="explore_address_search",
-    )
-
-    if not search_query.strip():
-        return
-
-    matched_addrs = _search_feature_df_addresses(search_query, feature_df)
-
-    if not matched_addrs:
-        _no_results_state(search_query.strip())
-        return
+    all_addrs = sorted(feature_df["display_address"].dropna().unique().tolist())
 
     selected_addr = st.selectbox(
-        "Matching addresses",
-        options=matched_addrs,
+        "Search by block and street",
+        options=[None] + all_addrs,
+        index=0,
+        placeholder="e.g. 406 ANG MO KIO AVE 10",
         key="explore_feature_addr_dropdown",
-        label_visibility="collapsed",
+        format_func=lambda x: "" if x is None else x,
     )
+
+    if selected_addr is None:
+        return
 
     addr_df = feature_df[feature_df["display_address"] == selected_addr].copy()
 
@@ -853,30 +890,37 @@ def _render_flat_lookup(inputs, feature_df: pd.DataFrame):
         f"{int(selected_area)}_{selected_storey}_{remaining_for_pred}"
     )
 
-    if st.button("Predict current value", type="primary", key="explore_lookup_predict_btn"):
+    predict_clicked = st.button("Predict current value", type="primary", key="explore_lookup_predict_btn")
+
+    if predict_clicked:
         try:
             from backend_predictor_listings.price_predictor.notebooks.predict_hypothetical import (
-                predict_hypothetical,
+                predict_with_spatial_overrides,
             )
         except Exception as e:
             st.error(f"Predictor unavailable: {e}")
             return
 
-        with st.spinner("Running model — this may take a few seconds on first load…"):
-            try:
-                result = predict_hypothetical(
-                    floor_area_sqm=selected_area,
-                    town=town_for_pred,
-                    flat_type=flat_type_for_pred,
-                    remaining_lease_years=remaining_for_pred,
-                    storey=selected_storey,
-                )
-                result["_lookup_addr"] = selected_addr
-                result["_lookup_ft"] = selected_flat_type
-                st.session_state[result_key] = result
-            except Exception as e:
-                st.error(f"Could not generate prediction: {e}")
-                return
+        try:
+            # Extract real spatial features from this block's transactions
+            spatial = _compute_block_spatial_features(addr_df)
+            result = predict_with_spatial_overrides(
+                floor_area_sqm=selected_area,
+                town=town_for_pred,
+                flat_type=flat_type_for_pred,
+                remaining_lease_years=remaining_for_pred,
+                storey=selected_storey,
+                spatial_features=spatial,
+            )
+            # Attach real spatial distances and computed amenity scores to result
+            result.update(spatial)
+            result.update(_compute_amenity_score_from_distances(spatial))
+            result["_lookup_addr"] = selected_addr
+            result["_lookup_ft"] = selected_flat_type
+            st.session_state[result_key] = result
+        except Exception as e:
+            st.error(f"Could not generate prediction: {e}")
+            return
 
     result = st.session_state.get(result_key)
     if result:
@@ -920,7 +964,7 @@ def _render_explore_flat_profile(inputs=None, listings_df: pd.DataFrame = None, 
         headline="No specific block in mind?",
         body=(
             "Pick a town, flat type, size, and lease. We'll show our <strong>model's fair-value estimate</strong> "
-            "alongside the <strong>median price buyers actually paid</strong> for similar flats in the past 2 years."
+            "alongside the <strong>median price buyers actually paid</strong> for similar flats in the past 6 months."
         ),
     )
 
@@ -999,34 +1043,32 @@ def _render_explore_flat_profile(inputs=None, listings_df: pd.DataFrame = None, 
             st.error(f"Hypothetical predictor is unavailable: {e}")
             return
 
-        with st.spinner("Running model — this may take a few seconds on first load…"):
-            try:
-                result = predict_hypothetical(
-                    floor_area_sqm=hyp_floor_area,
-                    town=hyp_town,
-                    flat_type=hyp_flat_type,
-                    remaining_lease_years=hyp_remaining_lease,
-                    storey=hyp_storey,
-                )
-                amenity_estimates = _estimate_hypothetical_amenities(result, listings_df)
-                result.update(amenity_estimates)
+        try:
+            result = predict_hypothetical(
+                floor_area_sqm=hyp_floor_area,
+                town=hyp_town,
+                flat_type=hyp_flat_type,
+                remaining_lease_years=hyp_remaining_lease,
+                storey=hyp_storey,
+            )
 
-                # Compute median from feature_df for this profile
-                fdf = feature_df if feature_df is not None else pd.DataFrame()
-                median_price, median_count = _compute_feature_df_median(
-                    fdf,
-                    town=hyp_town,
-                    flat_type=hyp_flat_type,
-                    floor_area=hyp_floor_area,
-                    remaining_lease=hyp_remaining_lease,
-                )
-                result["_profile_median"] = median_price
-                result["_profile_median_count"] = median_count
+            # Compute median from feature_df for this profile (last 6 months)
+            fdf = feature_df if feature_df is not None else pd.DataFrame()
+            median_price, median_count = _compute_feature_df_median(
+                fdf,
+                town=hyp_town,
+                flat_type=hyp_flat_type,
+                floor_area=hyp_floor_area,
+                remaining_lease=hyp_remaining_lease,
+                months_back=6,
+            )
+            result["_profile_median"] = median_price
+            result["_profile_median_count"] = median_count
 
-                st.session_state["explore_profile_result"] = result
-            except Exception as e:
-                st.error(f"Could not generate estimate: {e}")
-                return
+            st.session_state["explore_profile_result"] = result
+        except Exception as e:
+            st.error(f"Could not generate estimate: {e}")
+            return
 
     result = st.session_state.get("explore_profile_result")
     if not result:
@@ -1046,25 +1088,6 @@ def _render_explore_flat_profile(inputs=None, listings_df: pd.DataFrame = None, 
     if used_n:
         st.caption(f"Amenity estimates based on {int(used_n)} similar listings.")
 
-    hyp_row = _build_hypothetical_result_row(result)
-
-    if _is_row_already_saved(hyp_row):
-        st.button(
-            "Saved ♥",
-            key="explore_profile_saved_disabled",
-            use_container_width=True,
-            disabled=True,
-        )
-    else:
-        if st.button(
-            "Save hypothetical flat",
-            key="explore_profile_save",
-            use_container_width=True,
-        ):
-            if _save_extra_row(hyp_row):
-                st.success("Hypothetical flat saved to Saved tab.")
-                st.rerun()
-
 
 # ---------------------------------------------------------------------------
 # Main entry point
@@ -1073,19 +1096,13 @@ def _render_explore_flat_profile(inputs=None, listings_df: pd.DataFrame = None, 
 def render_explore_page(inputs=None, listings_df: pd.DataFrame = None):
     st.markdown(
         """
-        <div style="padding:0 0 28px;">
+        <div style="padding:0 0 24px;">
             <div style="font-size:0.67rem;font-weight:700;text-transform:uppercase;
                         letter-spacing:0.14em;color:#FF4458;margin-bottom:10px;">
                 Research tools
             </div>
-            <div style="font-size:1.9rem;font-weight:800;color:#1a1a2e;
-                        line-height:1.15;margin-bottom:9px;">
+            <div style="font-size:1.9rem;font-weight:800;color:#1a1a2e;line-height:1.15;">
                 Explore
-            </div>
-            <div style="font-size:0.9rem;color:#555577;line-height:1.65;max-width:500px;">
-                Look up the complete transaction history for any HDB block,
-                or model-price any flat profile to understand what the
-                market should say it's worth.
             </div>
         </div>
         """,
