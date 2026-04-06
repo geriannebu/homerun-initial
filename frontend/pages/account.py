@@ -234,7 +234,7 @@ def _render_preferences():
         "<p style='font-size:0.72rem;font-weight:700;text-transform:uppercase;"
         "letter-spacing:0.08em;color:#059E87;margin-bottom:0.2rem;'>"
         "Your preferences</p>"
-        "<p style='font-size:0.8rem;color:#9ca3af;margin-bottom:1rem;'>"
+        "<p style='font-size:0.8rem;color:#9ca3af;margin-bottom:0.7rem;line-height:1.45;'>"
         "Edit any single preference — we'll instantly generate a new deck for you.</p>",
         unsafe_allow_html=True,
     )
@@ -257,17 +257,17 @@ def _row_header(label: str, value_display: str, field_key: str):
     editing = _get_editing()
     is_open = editing == field_key
 
-    col_l, col_v, col_btn = st.columns([1.4, 2.2, 0.9])
+    col_l, col_v, col_btn = st.columns([1.2, 2.5, 0.7])
     with col_l:
         st.markdown(
-            f"<p style='font-size:0.8rem;color:#9ca3af;font-weight:600;"
-            f"padding-top:0.55rem;'>{label}</p>",
+            f"<p style='font-size:0.78rem;color:#9ca3af;font-weight:600;"
+            f"padding-top:0.35rem;margin:0;'>{label}</p>",
             unsafe_allow_html=True,
         )
     with col_v:
         st.markdown(
-            f"<p style='font-size:0.88rem;font-weight:700;color:#0f172a;"
-            f"padding-top:0.55rem;'>{value_display}</p>",
+            f"<p style='font-size:0.86rem;font-weight:700;color:#0f172a;"
+            f"padding-top:0.35rem;margin:0;line-height:1.35;'>{value_display}</p>",
             unsafe_allow_html=True,
         )
     with col_btn:
@@ -277,7 +277,7 @@ def _row_header(label: str, value_display: str, field_key: str):
             st.rerun()
 
     st.markdown(
-        "<hr style='border:none;border-top:1px solid #e4e7ed;margin:4px 0 8px;'>",
+        "<hr style='border:none;border-top:1px solid #e4e7ed;margin:2px 0 6px;'>",
         unsafe_allow_html=True,
     )
     return is_open
@@ -320,7 +320,7 @@ def _pref_row_budget():
     )
     st.markdown(
         f"<div style='text-align:center;font-size:1.8rem;font-weight:800;"
-        f"letter-spacing:-0.03em;color:#0f172a;margin:0.2rem 0 0.8rem;'>"
+        f"letter-spacing:-0.03em;color:#0f172a;margin:0.1rem 0 0.6rem;'>"
         f"S${new_val:,}</div>",
         unsafe_allow_html=True,
     )
@@ -349,10 +349,10 @@ def _pref_row_flat_type():
         with cols[i]:
             st.markdown(
                 f"""<div style="border:{border};background:{bg};border-radius:12px;
-                    padding:10px 4px;text-align:center;margin-bottom:4px;">
-                    <div style="font-size:1.4rem;">{FLAT_ICONS[ft]}</div>
+                    padding:8px 4px;text-align:center;margin-bottom:4px;">
+                    <div style="font-size:1.25rem;">{FLAT_ICONS[ft]}</div>
                     <div style="font-size:0.72rem;font-weight:700;color:{color};
-                         margin-top:4px;">{FLAT_TYPE_LABELS[ft]}</div>
+                         margin-top:3px;line-height:1.2;">{FLAT_TYPE_LABELS[ft]}</div>
                 </div>""",
                 unsafe_allow_html=True,
             )
@@ -376,7 +376,7 @@ def _pref_row_floor_area():
     )
     st.markdown(
         f"<div style='text-align:center;font-size:1.8rem;font-weight:800;"
-        f"letter-spacing:-0.03em;color:#0f172a;margin:0.2rem 0 0.8rem;'>"
+        f"letter-spacing:-0.03em;color:#0f172a;margin:0.1rem 0 0.6rem;'>"
         f"{new_val} sqm</div>",
         unsafe_allow_html=True,
     )
@@ -404,10 +404,10 @@ def _pref_row_lease():
 
     st.markdown(
         f"<div style='text-align:center;font-size:1.8rem;font-weight:800;"
-        f"letter-spacing:-0.03em;color:#0f172a;margin:0.2rem 0 0.2rem;'>"
+        f"letter-spacing:-0.03em;color:#0f172a;margin:0.1rem 0 0.1rem;'>"
         f"{new_val} years</div>"
         f"<div style='text-align:center;font-size:0.8rem;color:#9ca3af;"
-        f"margin-bottom:0.8rem;'>{hint}</div>",
+        f"margin-bottom:0.6rem;'>{hint}</div>",
         unsafe_allow_html=True,
     )
     if st.button("Save & generate new deck →", key="save_lease",
@@ -428,7 +428,7 @@ def _pref_row_town():
         st.session_state.pref_town = None
         _save_and_regenerate()
 
-    st.markdown("<div style='margin:8px 0 4px;font-size:0.76rem;color:#9ca3af;font-weight:600;'>OR PICK A SPECIFIC TOWN</div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin:6px 0 4px;font-size:0.74rem;color:#9ca3af;font-weight:600;'>OR PICK A SPECIFIC TOWN</div>", unsafe_allow_html=True)
     current_idx = (sorted(TOWNS).index(val) + 1) if val in (TOWNS or []) else 0
     town_choice = st.selectbox(
         "Town", ["— select —"] + sorted(TOWNS),
@@ -460,7 +460,7 @@ def _pref_row_amenity_rank():
     if rank:
         st.markdown(
             "<p style='font-size:0.76rem;color:#9ca3af;font-weight:600;"
-            "text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px;'>"
+            "text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px;'>"
             "Current ranking</p>",
             unsafe_allow_html=True,
         )
@@ -472,7 +472,7 @@ def _pref_row_amenity_rank():
                 st.markdown(
                     f"<div style='display:flex;align-items:center;gap:10px;"
                     f"padding:8px 12px;background:#f7f8fa;border:1px solid #e4e7ed;"
-                    f"border-radius:9px;margin-bottom:5px;'>"
+                    f"border-radius:9px;margin-bottom:4px;'>"
                     f"<span style='font-size:0.68rem;font-weight:800;color:#059E87;"
                     f"min-width:16px;'>#{i+1}</span>"
                     f"<span style='font-size:1rem;'>{icon}</span>"
@@ -489,7 +489,7 @@ def _pref_row_amenity_rank():
     if remaining:
         st.markdown(
             "<p style='font-size:0.76rem;color:#9ca3af;font-weight:600;"
-            "text-transform:uppercase;letter-spacing:0.07em;margin:10px 0 6px;'>"
+            "text-transform:uppercase;letter-spacing:0.07em;margin:8px 0 5px;'>"
             "Add next priority</p>",
             unsafe_allow_html=True,
         )
@@ -506,7 +506,7 @@ def _pref_row_amenity_rank():
                     st.rerun()
 
     if len(rank) == len(all_keys):
-        st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:0.35rem'></div>", unsafe_allow_html=True)
         if st.button("Save & generate new deck →", key="save_amenity",
                      type="primary", use_container_width=True):
             _save_and_regenerate()
