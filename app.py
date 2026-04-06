@@ -859,7 +859,7 @@ def _render_compare():
 
     session = get_active_session()
     if session is None:
-        st.error("No active session found.")
+        render_comparison_page(inputs=None, listings_df=pd.DataFrame())
         return
 
     liked_df = get_active_session_liked_df()

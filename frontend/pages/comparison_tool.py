@@ -135,6 +135,91 @@ def _comparison_card_subtitle(row):
     return address
 
 
+def _render_empty_compare_state():
+    st.components.v1.html(
+        """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;background:transparent;overflow:hidden;}
+
+@keyframes bob   {0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes fadein{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse {0%,100%{opacity:0.30}50%{opacity:0.60}}
+@keyframes drift1{0%,100%{transform:translate(0,0)}40%{transform:translate(8px,-12px)}80%{transform:translate(-6px,8px)}}
+@keyframes drift2{0%,100%{transform:translate(0,0)}35%{transform:translate(-10px,9px)}70%{transform:translate(7px,-7px)}}
+@keyframes drift3{0%,100%{transform:translate(0,0)}50%{transform:translate(6px,14px)}}
+
+.scene{
+  position:relative;width:100%;height:340px;overflow:hidden;
+  background:#fafafa;border-radius:20px;
+  border:1.5px solid rgba(255,68,88,0.10);
+}
+.glow{
+  position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);
+  width:320px;height:200px;
+  background:radial-gradient(ellipse,rgba(255,68,88,0.10) 0%,transparent 65%);
+  animation:pulse 4s ease-in-out infinite;pointer-events:none;
+}
+.ghost{position:absolute;line-height:1;filter:grayscale(0.3);}
+.centre{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;z-index:5;
+}
+.hero-wrap{
+  font-size:3.8rem;line-height:1;margin-bottom:1.1rem;
+  filter:drop-shadow(0 6px 18px rgba(255,68,88,0.22));
+  animation:bob 3.2s ease-in-out infinite,fadein 0.6s ease both;
+  animation-delay:0s,0.1s;
+}
+.title{
+  font-size:1.25rem;font-weight:800;letter-spacing:-0.03em;
+  color:#0f172a;margin-bottom:0.4rem;
+  animation:fadein 0.55s ease both;animation-delay:0.25s;
+}
+.hint{
+  font-size:0.85rem;font-weight:500;color:#94a3b8;max-width:280px;
+  text-align:center;line-height:1.6;
+  animation:fadein 0.55s ease both;animation-delay:0.4s;
+}
+.hint strong{color:#FF6B6B;font-weight:700;}
+.pill{
+  margin-top:1.1rem;display:inline-flex;align-items:center;gap:6px;
+  padding:7px 16px;border-radius:999px;
+  background:rgba(255,68,88,0.07);border:1px solid rgba(255,68,88,0.18);
+  font-size:0.78rem;font-weight:700;color:#FF4458;
+  animation:fadein 0.55s ease both;animation-delay:0.55s;
+}
+</style>
+</head>
+<body>
+<div class="scene">
+  <div class="glow"></div>
+  <span class="ghost" style="top:8%;left:6%;font-size:2rem;opacity:0.12;animation:drift1 9s ease-in-out infinite;">⚖️</span>
+  <span class="ghost" style="top:10%;right:8%;font-size:1.7rem;opacity:0.10;animation:drift2 11s ease-in-out infinite;animation-delay:-3s;">📊</span>
+  <span class="ghost" style="top:55%;left:4%;font-size:1.3rem;opacity:0.09;animation:drift3 13s ease-in-out infinite;animation-delay:-5s;">🏠</span>
+  <span class="ghost" style="top:58%;right:5%;font-size:1.4rem;opacity:0.09;animation:drift1 10s ease-in-out infinite;animation-delay:-7s;">🔎</span>
+  <span class="ghost" style="bottom:10%;left:22%;font-size:1.1rem;opacity:0.08;animation:drift2 14s ease-in-out infinite;animation-delay:-2s;">✨</span>
+  <span class="ghost" style="bottom:12%;right:24%;font-size:1.0rem;opacity:0.08;animation:drift3 12s ease-in-out infinite;animation-delay:-9s;">💫</span>
+
+  <div class="centre">
+    <div class="hero-wrap">⚖️</div>
+    <div class="title">Nothing to compare yet</div>
+    <div class="hint">Pick flats from <strong>Saved</strong> to see them side by side here.</div>
+    <div class="pill">↙ Head to Saved to choose flats</div>
+  </div>
+</div>
+</body>
+</html>""",
+        height=350,
+        scrolling=False,
+    )
+
+
 # =========================================================
 # Render sections
 # =========================================================
@@ -450,7 +535,7 @@ def render_comparison_page(inputs, listings_df: pd.DataFrame):
     custom_df = pd.DataFrame(st.session_state.get("custom_compare_rows", []))
 
     if listings_df.empty and custom_df.empty:
-        st.info("No flats selected yet. Go to Saved to pick flats.")
+        _render_empty_compare_state()
         return
 
     frames = []
@@ -480,7 +565,7 @@ def render_comparison_page(inputs, listings_df: pd.DataFrame):
     ]
 
     if selected_df.empty:
-        st.info("No flats selected yet. Go to Saved to pick flats.")
+        _render_empty_compare_state()
         return
 
     selected_df = _prepare_comparison_scores(selected_df, inputs)
