@@ -245,7 +245,6 @@ def _render_preferences():
     _pref_row_lease()
     _pref_row_town()
     _pref_row_amenity_rank()
-    _pref_row_anchors()
 
 
 # ── Shared row chrome ─────────────────────────────────────────────────────────
@@ -510,40 +509,6 @@ def _pref_row_amenity_rank():
         st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
         if st.button("Save & generate new deck →", key="save_amenity",
                      type="primary", use_container_width=True):
-            _save_and_regenerate()
-
-
-def _pref_row_anchors():
-    existing = st.session_state.get("pref_landmark_postals") or []
-    label    = ", ".join(existing) if existing else "None"
-    open_    = _row_header("Anchor locations", label, "anchors")
-    if not open_:
-        return
-
-    c1, c2 = st.columns(2)
-    with c1:
-        v1 = st.text_input(
-            "Postal code 1",
-            value=existing[0] if len(existing) > 0 else "",
-            placeholder="e.g. 119077", key="edit_anchor_1",
-        )
-    with c2:
-        v2 = st.text_input(
-            "Postal code 2",
-            value=existing[1] if len(existing) > 1 else "",
-            placeholder="e.g. 560215", key="edit_anchor_2",
-        )
-
-    col_a, col_b = st.columns(2)
-    with col_a:
-        if st.button("Clear anchors", key="clear_anchors", use_container_width=True):
-            st.session_state.pref_landmark_postals = []
-            _save_and_regenerate()
-    with col_b:
-        if st.button("Save & generate new deck →", key="save_anchors",
-                     type="primary", use_container_width=True):
-            postals = [p.strip() for p in [v1, v2] if p.strip()]
-            st.session_state.pref_landmark_postals = postals
             _save_and_regenerate()
 
 
