@@ -454,20 +454,22 @@ def render_listing_tab(listings_df: pd.DataFrame):
         unsafe_allow_html=True,
     )
 
-    _render_swipe_controls(session["session_id"], current_card["listing_id"])
 
-    c1, c2, c3 = st.columns([1, 1.2, 1])
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        if st.button("✕ Pass", key=f"pass_{current_card['listing_id']}", use_container_width=True):
+            record_swipe(session["session_id"], str(current_card["listing_id"]), "left")
+            st.rerun()
+
     with c2:
-        if st.button("View listing details", key=f"deck_detail_{current_card['listing_id']}", use_container_width=True):
+        if st.button("View details", key=f"deck_detail_{current_card['listing_id']}", use_container_width=True):
             show_listing_detail(current_card["listing_id"])
 
-    total = len(listings_df)
-    seen = len(liked_ids) + len(passed_ids)
-    st.markdown(
-        f"<p style='text-align:center;font-size:0.8rem;color:#94a3b8;margin-top:0.5rem;'>"
-        f"{seen} of {total} seen · {len(liked_ids)} saved · {len(passed_ids)} passed</p>",
-        unsafe_allow_html=True,
-    )
+    with c3:
+        if st.button("♥ Save", key=f"save_{current_card['listing_id']}", type="primary", use_container_width=True):
+            record_swipe(session["session_id"], str(current_card["listing_id"]), "right")
+            st.rerun()
 
 
 def _render_swipe_controls(session_id: str, listing_id: str | None):
