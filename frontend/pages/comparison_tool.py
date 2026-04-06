@@ -14,6 +14,13 @@ from backend.services.recommender import _amenity_score, RANKING_ALPHA
 def _safe_numeric(series, default=0.0):
     return pd.to_numeric(series, errors="coerce").fillna(default)
 
+def _sqm_to_sqft(val):
+    try:
+        if pd.isna(val):
+            return None
+        return round(float(val) * 10.7639)
+    except Exception:
+        return None
 
 def _comparison_value_score(value_delta_pct: float, clip: float = 0.20) -> float:
     pct = value_delta_pct / 100.0
@@ -72,7 +79,6 @@ def _prepare_comparison_scores(df: pd.DataFrame, inputs: UserInputs) -> pd.DataF
     for _, row in df.iterrows():
         row_amenity = row.get("amenity_score", np.nan)
 
-        # Prefer stored row-level amenity score from predictor_service / recommender output
         if pd.notna(row_amenity):
             a_score = float(row_amenity)
         else:
@@ -82,7 +88,6 @@ def _prepare_comparison_scores(df: pd.DataFrame, inputs: UserInputs) -> pd.DataF
                 scoring_weights=amenity_weights,
             )
 
-        # Always recompute comparison value score with relaxed clip = 0.20
         valuation_pct = row.get("valuation_pct", np.nan)
 
         if pd.isna(valuation_pct):
@@ -95,8 +100,6 @@ def _prepare_comparison_scores(df: pd.DataFrame, inputs: UserInputs) -> pd.DataF
                 valuation_pct = 0.0
 
         v_score = _comparison_value_score(-valuation_pct, clip=0.20)
-
-        # Recompute overall score using row-level amenity score + comparison value score
         o_score = round(alpha * a_score + (1 - alpha) * v_score, 4)
 
         accessibility_scores.append(round(a_score * 100, 1))
@@ -138,98 +141,69 @@ def _comparison_card_subtitle(row):
 def _render_listing_score_cards(selected_df):
     st.markdown("### Side-by-Side Listing Comparison")
 
-    cards_per_row = 4
-    rows = [selected_df.iloc[i:i + cards_per_row] for i in range(0, len(selected_df), cards_per_row)]
+    max_compare = 5
+    selected_df = selected_df.head(max_compare).copy()
 
-    global_idx = 0
-    for row_df in rows:
-        cols = st.columns(cards_per_row)
+    num_cards = len(selected_df)
+    cols = st.columns(num_cards)
 
-        for col_idx, (_, row) in enumerate(row_df.iterrows()):
-            lid = row.get("listing_id")
-            row_uid = f"{row.get('listing_id', '')}_{row.get('session_id', 'na')}_{global_idx}"
+    for global_idx, (_, row) in enumerate(selected_df.iterrows()):
+        lid = row.get("listing_id")
+        row_uid = f"{row.get('listing_id', '')}_{row.get('session_id', 'na')}_{global_idx}"
 
-            card_title = _comparison_card_title(global_idx, row)
-            card_subtitle = _comparison_card_subtitle(row)
+        card_title = _comparison_card_title(global_idx, row)
+        card_subtitle = _comparison_card_subtitle(row)
 
-            with cols[col_idx]:
-                with st.container(border=True):
-                    title_col, close_col = st.columns([8, 1])
+        with cols[global_idx]:
+            with st.container(border=True):
+                title_col, close_col = st.columns([8, 1])
 
-                    with title_col:
-                        st.markdown(f"#### {card_title}")
-                        st.markdown(
-                            f"<div style='font-size:0.82rem;color:#6b7280;line-height:1.55;margin-top:-0.25rem;margin-bottom:0.45rem;word-break:break-word;'>{card_subtitle}</div>",
-                            unsafe_allow_html=True,
-                        )
+                with title_col:
+                    st.markdown(f"#### {card_title}")
+                    st.markdown(
+                        f"<div style='font-size:0.82rem;color:#6b7280;line-height:1.55;margin-top:-0.25rem;margin-bottom:0.45rem;word-break:break-word;'>{card_subtitle}</div>",
+                        unsafe_allow_html=True,
+                    )
 
-                    with close_col:
-                        if st.button("×", key=f"remove_compare_{row_uid}", help="Remove from comparison"):
-                            if str(lid).startswith("HYP-"):
-                                st.session_state.custom_compare_rows = [
-                                    r for r in st.session_state.get("custom_compare_rows", [])
-                                    if r.get("listing_id") != lid
-                                ]
-                            else:
-                                st.session_state.compare_selected_ids = [
-                                    x for x in st.session_state.get("compare_selected_ids", [])
-                                    if x != lid
-                                ]
-                            st.rerun()
+                with close_col:
+                    if st.button("×", key=f"remove_compare_{row_uid}", help="Remove from comparison"):
+                        if str(lid).startswith("HYP-"):
+                            st.session_state.custom_compare_rows = [
+                                r for r in st.session_state.get("custom_compare_rows", [])
+                                if r.get("listing_id") != lid
+                            ]
+                        else:
+                            st.session_state.compare_selected_ids = [
+                                x for x in st.session_state.get("compare_selected_ids", [])
+                                if x != lid
+                            ]
+                        st.rerun()
 
-                    st.write(f"**Town:** {row.get('town', '—')}")
+                st.write(f"**Town:** {row.get('town', '—')}")
 
-                    if "comparison_source" in row:
-                        source = row.get("comparison_source", "Discover")
-                        st.write(f"**Source:** {source}")
 
-                    st.caption("For price and flat details, refer to the Detailed Breakdown below.")
+                st.divider()
 
-                    st.divider()
+                value_score = row.get("value_score", np.nan)
+                value_score = 70.0 if pd.isna(value_score) else float(value_score)
+                value_score = max(0.0, min(value_score, 100.0))
+                st.write(f"**Value-for-money score:** {value_score:.1f}/100")
+                st.progress(value_score / 100)
 
-                    value_score = row.get("value_score", np.nan)
-                    value_score = 70.0 if pd.isna(value_score) else float(value_score)
-                    value_score = max(0.0, min(value_score, 100.0))
-                    st.write(f"**Value-for-money score:** {value_score:.0f}/100")
-                    st.progress(value_score / 100)
+                amenity_score = row.get("accessibility_score", np.nan)
+                amenity_score = 70.0 if pd.isna(amenity_score) else float(amenity_score)
+                amenity_score = max(0.0, min(amenity_score, 100.0))
+                st.write(f"**Amenity score:** {amenity_score:.1f}/100")
+                st.progress(amenity_score / 100)
 
-                    if value_score == float(selected_df["value_score"].max()):
-                        st.caption("Best value among selected options")
-                    elif value_score >= float(selected_df["value_score"].median()):
-                        st.caption("Reasonably priced with some trade-offs")
-                    else:
-                        st.caption("Priced at a premium relative to comparable options")
+                overall_score = row.get("overall_score", np.nan)
+                overall_score = 70.0 if pd.isna(overall_score) else float(overall_score)
+                overall_score = max(0.0, min(overall_score, 100.0))
+                st.write(f"**Overall score:** {overall_score:.1f}/100")
+                st.progress(overall_score / 100)
 
-                    amenity_score = row.get("accessibility_score", np.nan)
-                    amenity_score = 70.0 if pd.isna(amenity_score) else float(amenity_score)
-                    amenity_score = max(0.0, min(amenity_score, 100.0))
-                    st.write(f"**Amenity score:** {amenity_score:.0f}/100")
-                    st.progress(amenity_score / 100)
+    st.caption("For price and flat details, refer to the Detailed Breakdown below.")
 
-                    if amenity_score == float(selected_df["accessibility_score"].max()):
-                        st.caption("Strongest amenity performance among selected flats")
-                    elif amenity_score >= float(selected_df["accessibility_score"].median()):
-                        st.caption("Performs well on nearby amenities overall")
-                    else:
-                        st.caption("Less competitive on nearby amenities overall")
-
-                    overall_score = row.get("overall_score", np.nan)
-                    overall_score = 70.0 if pd.isna(overall_score) else float(overall_score)
-                    overall_score = max(0.0, min(overall_score, 100.0))
-                    st.write(f"**Overall score:** {overall_score:.0f}/100")
-                    st.progress(overall_score / 100)
-
-                    if overall_score == float(selected_df["overall_score"].max()):
-                        st.caption("Strongest overall balance of value and amenities")
-                    elif overall_score >= float(selected_df["overall_score"].median()):
-                        st.caption("Performs well overall across the comparison scoring criteria")
-                    else:
-                        st.caption("Less competitive overall relative to the selected options")
-
-            global_idx += 1
-
-        st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
-        
 def _render_metric_bar_chart(selected_df, metric_col, chart_title):
     chart_df = selected_df.copy()
     chart_df[metric_col] = pd.to_numeric(chart_df[metric_col], errors="coerce").fillna(0)
@@ -414,6 +388,11 @@ def _render_detailed_breakdown(selected_df):
         "nearest_school_m": "School Walk (m)",
     }
 
+    if "floor_area_sqm" in disp.columns:
+        disp["floor_area_sqft_display"] = disp["floor_area_sqm"].apply(
+            lambda x: f"{_sqm_to_sqft(x):,}" if _sqm_to_sqft(x) is not None else "—"
+        )
+
     display_cols = {
         "flat_label": "Flat",
         "comparison_source": "Source",
@@ -421,7 +400,7 @@ def _render_detailed_breakdown(selected_df):
         "town": "Town",
         "postal_code": "Postal Code",
         "flat_type": "Flat Type",
-        "floor_area_sqm": "Floor Area (sqm)",
+        "floor_area_sqft_display": "Floor Area (sqft)",
         "remaining_lease_years": "Remaining Lease (years)",
         "value_score": "Value-for-money",
         "accessibility_score": "Amenity score",
@@ -496,6 +475,11 @@ def render_comparison_page(inputs, listings_df: pd.DataFrame):
 
     selected_df = _prepare_comparison_scores(selected_df, inputs)
     selected_df = selected_df.sort_values("overall_score", ascending=False).reset_index(drop=True)
+
+    if len(selected_df) > 5:
+        st.info("You selected more than 5 flats. Showing the top 5 flats in the side-by-side comparison.")
+
+    selected_df = selected_df.head(5).copy()
 
     if len(selected_df) < 2:
         st.warning("Select at least 2 flats for a more meaningful comparison.")
