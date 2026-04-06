@@ -295,7 +295,7 @@ def show_listing_detail(payload: Dict[str, Any] | str | int, show_actions: bool 
         st.error("Listing not found.")
         return
 
-    dialog_title = f"Listing Details · {listing_id}"
+    dialog_title = "Listing details"
 
     @st.dialog(dialog_title, width="large")
     def _render_dialog():
@@ -408,7 +408,24 @@ def show_listing_detail(payload: Dict[str, Any] | str | int, show_actions: bool 
                     st.success("Saved ♥")
 
         st.markdown(f"## {town} · {flat_type}")
-        st.caption(address or "Address unavailable")
+        st.markdown(
+            f"""
+            <div style="
+                margin: 0 0 12px 0;
+                padding: 10px 14px;
+                border-radius: 14px;
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                color: #0f172a;
+                font-size: 0.95rem;
+                font-weight: 700;
+                line-height: 1.4;
+                box-shadow: 0 2px 8px rgba(15,23,42,0.04);">
+                {address or "Address unavailable"}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         st.markdown(
             f"""
