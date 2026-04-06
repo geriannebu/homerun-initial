@@ -135,6 +135,7 @@ def _back_btn(key: str = "back"):
                 st.session_state.pop("pref_quiz_scores", None)
                 st.session_state.pop("pref_amenity_rank", None)
                 st.session_state.pop("pref_amenity_weights", None)
+                st.session_state.pop("pref_selected_amenities", None)
                 st.session_state.onboarding_step = 7
 
                 if st.session_state.get("quiz_ties"):
@@ -833,9 +834,15 @@ def _render_lifestyle():
     mapped_weights = _map_quiz_weights(scoring_weights)
     mapped_quiz_scores = _map_quiz_weights(normalised_weights)
 
+    selected_amenities = [
+        key for key in mapped_ranking
+        if float(mapped_quiz_scores.get(key, 0.0)) > 0
+    ]
+
     st.session_state["pref_amenity_rank"] = mapped_ranking
     st.session_state["pref_amenity_weights"] = mapped_weights
     st.session_state["pref_quiz_scores"] = mapped_quiz_scores
+    st.session_state["pref_selected_amenities"] = selected_amenities
     st.session_state.onboarding_step = 8
     st.rerun()
 
@@ -895,6 +902,7 @@ def _render_predicted_amenity_ranking():
             st.session_state.pop("pref_quiz_scores", None)
             st.session_state.pop("pref_amenity_rank", None)
             st.session_state.pop("pref_amenity_weights", None)
+            st.session_state.pop("pref_selected_amenities", None)
             reset_quiz()
             st.session_state.onboarding_step = 7
             st.rerun()
