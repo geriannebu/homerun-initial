@@ -2,9 +2,6 @@
 streamlit==1.55.0
 pandas==2.2.2
 numpy==2.0.0
-requests==2.32.5
-python-dotenv
-openpyxl==3.1.4
 pydeck==0.9.1
 
 # ML prediction (Explore tab — ensemble model)
@@ -19,7 +16,6 @@ catboost==1.2.10
 
 # Streamlit transitive deps (pinned for reproducibility)
 altair==6.0.0
-graphviz==0.21
 pillow==10.2.0
 protobuf==6.33.6
 pyarrow==23.0.1
