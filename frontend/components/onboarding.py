@@ -18,12 +18,9 @@ import streamlit.components.v1 as components
 from backend.utils.constants import FLAT_TYPES, TOWNS, AMENITY_LABELS
 from backend.services.quiz import render_quiz, reset_quiz, seed_quiz_from_existing_preferences
 from backend.schemas.inputs import UserInputs
+from textwrap import dedent
 
-try:
-    from streamlit_sortables import sort_items
-    HAS_SORTABLES = True
-except Exception:
-    HAS_SORTABLES = False
+HAS_SORTABLES = False
 
 
 TOTAL_STEPS = 9
@@ -136,6 +133,7 @@ def _back_btn(key: str = "back"):
                 st.session_state.pop("pref_amenity_rank", None)
                 st.session_state.pop("pref_amenity_weights", None)
                 st.session_state.pop("pref_selected_amenities", None)
+                st.session_state.pop("pref_rank_manually_adjusted", None)
                 st.session_state.onboarding_step = 7
 
                 if st.session_state.get("quiz_ties"):
@@ -183,6 +181,25 @@ def _map_quiz_weights(quiz_weights: dict[str, float]) -> dict[str, float]:
     return mapped
 
 
+def _build_rank_based_weights(rank: list[str], selected: list[str] | None = None) -> dict[str, float]:
+    selected = selected or rank
+    ordered_selected = [k for k in rank if k in selected]
+
+    weights = {k: 0.0 for k in FRONTEND_AMENITY_LABELS.keys()}
+    if not ordered_selected:
+        return weights
+
+    n = len(ordered_selected)
+    raw = {key: (n - i) for i, key in enumerate(ordered_selected)}
+    total = sum(raw.values())
+
+    if total > 0:
+        for k, v in raw.items():
+            weights[k] = v / total
+
+    return weights
+
+
 def _priority_explainer(rank: list[str]) -> str:
     if not rank:
         return "We’ve estimated what matters most to you based on your responses."
@@ -208,81 +225,78 @@ def _move_item(rank, idx, direction):
     return new_rank
 
 
+
+
 def _render_rank_list_with_buttons(rank):
     st.markdown(
-        "<div style='margin:8px 0 12px;font-size:0.78rem;color:#9ca3af;font-weight:600;"
+        "<div style='margin:8px 0 12px;font-size:0.78rem;color:#9ca3af;font-weight:700;"
         "text-transform:uppercase;letter-spacing:0.07em;'>Your predicted priority order</div>",
         unsafe_allow_html=True,
     )
+    st.caption("Use the arrows to adjust the order. Your finalised score will update automatically.")
 
     full_rank = st.session_state.get("pref_amenity_rank") or []
     selected = st.session_state.get("pref_selected_amenities") or []
 
     for i, key in enumerate(rank):
-        pos_col, info_col, up_col, down_col = st.columns([0.7, 5, 1, 1])
+        rank_col, card_col, up_col, down_col = st.columns([0.8, 7, 1, 1])
 
-        with pos_col:
-            st.markdown(
-                f"<div style='padding-top:10px;font-weight:800;color:{ACCENT};'>#{i+1}</div>",
-                unsafe_allow_html=True,
-            )
-
-        with info_col:
+        with rank_col:
             st.markdown(
                 f"""
-                <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;
-                            background:#f9fafb;border:1px solid #eceff3;border-radius:12px;">
-                    <span style="font-size:1.1rem;">{AMENITY_ICONS.get(key, '•')}</span>
-                    <span style="font-size:0.92rem;font-weight:600;color:#1a1a2e;">
-                        {FRONTEND_AMENITY_LABELS.get(key, key)}
-                    </span>
+                <div style="
+                    padding-top:12px;
+                    font-size:1.45rem;
+                    font-weight:800;
+                    color:#FF4458;
+                    letter-spacing:-0.04em;
+                ">
+                    #{i + 1}
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
+        with card_col:
+            with st.container(border=True):
+                icon_col, text_col = st.columns([0.8, 8])
+
+                with icon_col:
+                    st.markdown(
+                        f"<div style='font-size:1.4rem;line-height:1.9;'>{AMENITY_ICONS.get(key, '•')}</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                with text_col:
+                    st.markdown(
+                        f"<div style='padding-top:0.42rem;font-size:1.02rem;font-weight:700;color:#111827;'>{FRONTEND_AMENITY_LABELS.get(key, key)}</div>",
+                        unsafe_allow_html=True,
+                    )
+
         with up_col:
             if st.button("↑", key=f"up_{key}", use_container_width=True, disabled=(i == 0)):
                 new_selected_rank = _move_item(rank, i, -1)
                 remaining = [k for k in full_rank if k not in selected]
-                st.session_state.pref_amenity_rank = new_selected_rank + remaining
+                new_full_rank = new_selected_rank + remaining
+
+                st.session_state.pref_amenity_rank = new_full_rank
+                st.session_state.pref_amenity_weights = _build_rank_based_weights(new_full_rank, selected)
+                st.session_state.pref_rank_manually_adjusted = True
                 st.rerun()
 
         with down_col:
             if st.button("↓", key=f"down_{key}", use_container_width=True, disabled=(i == len(rank) - 1)):
                 new_selected_rank = _move_item(rank, i, 1)
                 remaining = [k for k in full_rank if k not in selected]
-                st.session_state.pref_amenity_rank = new_selected_rank + remaining
+                new_full_rank = new_selected_rank + remaining
+
+                st.session_state.pref_amenity_rank = new_full_rank
+                st.session_state.pref_amenity_weights = _build_rank_based_weights(new_full_rank, selected)
+                st.session_state.pref_rank_manually_adjusted = True
                 st.rerun()
 
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-def _render_rank_list_sortable(rank):
-    st.markdown(
-        "<div style='margin:8px 0 12px;font-size:0.78rem;color:#9ca3af;font-weight:600;"
-        "text-transform:uppercase;letter-spacing:0.07em;'>Drag to reorder</div>",
-        unsafe_allow_html=True,
-    )
-
-    full_rank = st.session_state.get("pref_amenity_rank") or []
-    selected = st.session_state.get("pref_selected_amenities") or []
-
-    labels_to_key = {
-        FRONTEND_AMENITY_LABELS.get(k, k): k
-        for k in rank
-    }
-    display_items = list(labels_to_key.keys())
-
-    sorted_display = sort_items(
-        display_items,
-        direction="vertical",
-        key="amenity_sortable",
-    )
-
-    new_selected_rank = [labels_to_key[label] for label in sorted_display]
-    remaining = [k for k in full_rank if k not in selected]
-
-    st.session_state.pref_amenity_rank = new_selected_rank + remaining
 
 
 def render_onboarding() -> bool:
@@ -586,7 +600,6 @@ def _render_flat_type():
                     st.session_state.pref_floor_area_sqft_manual = False
                     st.rerun()
 
-
     n = len(selected_types)
     ordered = [ft for ft in FLAT_TYPES if ft in selected_types]
     pills_html = "".join(
@@ -614,6 +627,7 @@ def _render_flat_type():
         st.rerun()
 
     _back_btn("ft_back")
+
 
 _FLAT_TYPE_MIN_SQFT = {
     "1 ROOM": 300,
@@ -842,7 +856,6 @@ def _render_lifestyle():
         return
 
     mapped_ranking = _map_quiz_ranking(final_ranking)
-    mapped_weights = _map_quiz_weights(scoring_weights)
     mapped_quiz_scores = _map_quiz_weights(normalised_weights)
 
     selected_amenities = [
@@ -851,9 +864,10 @@ def _render_lifestyle():
     ]
 
     st.session_state["pref_amenity_rank"] = mapped_ranking
-    st.session_state["pref_amenity_weights"] = mapped_weights
+    st.session_state["pref_amenity_weights"] = _build_rank_based_weights(mapped_ranking, selected_amenities)
     st.session_state["pref_quiz_scores"] = mapped_quiz_scores
     st.session_state["pref_selected_amenities"] = selected_amenities
+    st.session_state["pref_rank_manually_adjusted"] = False
     st.session_state.onboarding_step = 8
     st.rerun()
 
@@ -874,6 +888,9 @@ def _render_predicted_amenity_ranking():
     selected = st.session_state.get("pref_selected_amenities") or []
     display_rank = [k for k in rank if k in selected]
 
+    if "pref_rank_manually_adjusted" not in st.session_state:
+        st.session_state.pref_rank_manually_adjusted = False
+
     st.markdown(
         f"<div style='padding:12px 14px;background:#fff7ed;border:1px solid #fed7aa;"
         f"border-radius:12px;margin-bottom:1rem;font-size:0.9rem;color:#9a3412;'>"
@@ -882,33 +899,44 @@ def _render_predicted_amenity_ranking():
         unsafe_allow_html=True,
     )
 
-    if HAS_SORTABLES:
-        labels_to_key = {FRONTEND_AMENITY_LABELS.get(k, k): k for k in display_rank}
-        display_labels = [FRONTEND_AMENITY_LABELS.get(k, k) for k in display_rank]
-        sorted_display = sort_items(display_labels, direction="vertical", key="amenity_sortable")
+    _render_rank_list_with_buttons(display_rank)
 
-        new_selected_rank = [labels_to_key[label] for label in sorted_display]
-        remaining = [k for k in rank if k not in selected]
-        st.session_state.pref_amenity_rank = new_selected_rank + remaining
-    else:
-        _render_rank_list_with_buttons(display_rank)
+    final_rank = st.session_state.get("pref_amenity_rank") or rank
+    final_display_rank = [k for k in final_rank if k in selected]
 
-    with st.expander("Why these priorities?"):
-        st.markdown(
-            "We estimated these priorities from your quiz responses. "
-            "The percentages below show how strongly each amenity came through in your answers."
-        )
+    final_weights = st.session_state.get("pref_amenity_weights")
+    if not final_weights:
+        final_weights = _build_rank_based_weights(final_rank, selected)
+        st.session_state["pref_amenity_weights"] = final_weights
 
-        quiz_scores = st.session_state.get("pref_quiz_scores", {})
+    quiz_scores = st.session_state.get("pref_quiz_scores", {})
+    manually_adjusted = st.session_state.get("pref_rank_manually_adjusted", False)
 
-        if display_rank:
-            for key in display_rank:
+    expander_title = (
+        "Your finalised priorities ranking"
+        if manually_adjusted
+        else "Why these priorities?"
+    )
+
+    with st.expander(expander_title):
+        if manually_adjusted:
+            st.markdown(
+                "You adjusted the order of amenities above. The percentages shown here now reflect your finalised amenity priority weights, which will be used in your recommendations."
+            )
+
+            for idx, key in enumerate(final_display_rank):
+                label = FRONTEND_AMENITY_LABELS.get(key, key)
+                pct = final_weights.get(key, 0.0) * 100
+                st.markdown(f"**#{idx + 1} {label}** — Finalised score: `{pct:.1f}%`")
+        else:
+            st.markdown(
+                "We estimated these priorities from your quiz responses. The percentages below show how strongly each amenity came through in your answers."
+            )
+
+            for idx, key in enumerate(final_display_rank):
                 label = FRONTEND_AMENITY_LABELS.get(key, key)
                 quiz_pct = quiz_scores.get(key, 0.0) * 100
-
-                st.markdown(
-                    f"**{label}** — Inferred score: `{quiz_pct:.1f}%`"
-                )
+                st.markdown(f"**#{idx + 1} {label}** — Inferred score: `{quiz_pct:.1f}%`")
 
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
 
@@ -920,6 +948,7 @@ def _render_predicted_amenity_ranking():
             st.session_state.pop("pref_amenity_rank", None)
             st.session_state.pop("pref_amenity_weights", None)
             st.session_state.pop("pref_selected_amenities", None)
+            st.session_state.pop("pref_rank_manually_adjusted", None)
             reset_quiz()
             st.session_state.onboarding_step = 7
             st.rerun()
@@ -927,11 +956,9 @@ def _render_predicted_amenity_ranking():
     with c2:
         if st.button("Looks good →", key="amenity_rank_next", type="primary", use_container_width=True):
             final_rank = st.session_state.get("pref_amenity_rank") or list(FRONTEND_AMENITY_LABELS.keys())
-            n = len(final_rank)
-            raw_weights = {k: (n - i) for i, k in enumerate(final_rank)}
-            total = sum(raw_weights.values())
-            weights = {k: v / total for k, v in raw_weights.items()}
-            st.session_state["pref_amenity_weights"] = weights
+            final_weights = _build_rank_based_weights(final_rank, selected)
+
+            st.session_state["pref_amenity_weights"] = final_weights
             st.session_state.onboarding_step = 9
             st.rerun()
 
@@ -1070,10 +1097,7 @@ def build_inputs_from_prefs() -> UserInputs:
     amenity_weights = st.session_state.get("pref_amenity_weights")
 
     if not amenity_weights:
-        n = len(rank)
-        raw_weights = {key: (n - i) for i, key in enumerate(rank)}
-        total = sum(raw_weights.values())
-        amenity_weights = {k: v / total for k, v in raw_weights.items()}
+        amenity_weights = _build_rank_based_weights(rank, st.session_state.get("pref_selected_amenities") or rank)
 
     for key in FRONTEND_AMENITY_LABELS:
         if key not in amenity_weights:
@@ -1108,6 +1132,9 @@ def build_inputs_from_prefs() -> UserInputs:
 
 def get_preferences_display() -> dict:
     rank = st.session_state.get("pref_amenity_rank") or []
+    selected = st.session_state.get("pref_selected_amenities") or rank
+    rank = [k for k in rank if k in selected]
+
     budget_val = st.session_state.get("pref_budget")
     budget_display = "Flexible / not set" if st.session_state.get("pref_budget_flexible") else f"S${(budget_val or 0):,}"
 

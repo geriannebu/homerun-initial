@@ -17,6 +17,10 @@ from frontend.state.session import get_active_session_liked_df, get_active_sessi
 from frontend.components.listing_detail import show_listing_detail, _val_style
 from backend.utils.constants import AMENITY_COLORS, AMENITY_LABELS, TOWN_COORDS
 
+
+MAX_COMPARE = 5
+
+
 def _normalize_amenity_key(key: str) -> str:
     mapping = {
         "mall": "retail",
@@ -52,11 +56,8 @@ def _safe_amenity_color(key: str):
     key = _normalize_amenity_key(key)
     return AMENITY_COLORS.get(key, [120, 120, 120, 180])
 
+
 def _selected_amenities_for_saved_map() -> list[str]:
-    """
-    Use the explicitly selected amenities captured during onboarding.
-    This is a UI-only helper and does not affect recommendation outputs.
-    """
     selected = st.session_state.get("pref_selected_amenities", []) or []
     visible = []
 
@@ -69,17 +70,14 @@ def _selected_amenities_for_saved_map() -> list[str]:
 
 
 def _distinct_visible_amenity_colors(keys: list[str]) -> dict[str, list[int]]:
-    """
-    Assign distinct map colors to each visible amenity type so they do not clash.
-    """
     palette = [
-        [255, 99, 132, 210],   # pink-red
-        [54, 162, 235, 210],   # blue
-        [255, 206, 86, 210],   # yellow
-        [75, 192, 192, 210],   # teal
-        [153, 102, 255, 210],  # purple
-        [255, 159, 64, 210],   # orange
-        [46, 204, 113, 210],   # green
+        [255, 99, 132, 210],
+        [54, 162, 235, 210],
+        [255, 206, 86, 210],
+        [75, 192, 192, 210],
+        [153, 102, 255, 210],
+        [255, 159, 64, 210],
+        [46, 204, 113, 210],
     ]
 
     color_map = {}
@@ -87,11 +85,8 @@ def _distinct_visible_amenity_colors(keys: list[str]) -> dict[str, list[int]]:
         color_map[key] = palette[i % len(palette)]
     return color_map
 
+
 def _selected_amenity_keys_from_weights(amenity_weights: dict) -> list[str]:
-    """
-    Return all amenities that the user meaningfully selected / weighted
-    during onboarding, preserving descending weight order.
-    """
     if not amenity_weights:
         return []
 
@@ -115,26 +110,6 @@ def _selected_amenity_keys_from_weights(amenity_weights: dict) -> list[str]:
     return visible
 
 
-def _distinct_visible_amenity_colors(keys: list[str]) -> dict[str, list[int]]:
-    """
-    Force clearly distinct colors for visible amenities in the Saved map,
-    instead of relying only on AMENITY_COLORS (which may look too similar).
-    """
-    palette = [
-        [255, 99, 132, 210],   # pink-red
-        [54, 162, 235, 210],   # blue
-        [255, 206, 86, 210],   # yellow
-        [75, 192, 192, 210],   # teal
-        [153, 102, 255, 210],  # purple
-        [255, 159, 64, 210],   # orange
-        [46, 204, 113, 210],   # green
-    ]
-
-    color_map = {}
-    for i, key in enumerate(keys):
-        color_map[key] = palette[i % len(palette)]
-    return color_map
-
 def _safe_text(value, fallback="—"):
     if value is None:
         return fallback
@@ -152,6 +127,13 @@ def _safe_text(value, fallback="—"):
 def _safe_currency(value):
     return fmt_sgd(value) if pd.notna(value) else "—"
 
+def _sqm_to_sqft(val):
+    try:
+        if pd.isna(val):
+            return None
+        return round(float(val) * 10.7639)
+    except Exception:
+        return None
 
 def _safe_pct_text(value):
     if pd.notna(value):
@@ -209,17 +191,15 @@ def _render_saved_section(section_df: pd.DataFrame, section_title: str, selected
 
         flat_type = _safe_text(row.get("flat_type"))
         area = row.get("floor_area_sqm", np.nan)
+        area_sqft = _sqm_to_sqft(area)
 
         storey = row.get("storey_range")
         if pd.isna(storey) or not str(storey).strip() or str(storey).strip().lower() == "nan":
             storey = row.get("floor_level_text", "")
 
         meta_parts = [flat_type]
-        if pd.notna(area):
-            try:
-                meta_parts.append(f"{float(area):.1f} sqm")
-            except Exception:
-                meta_parts.append(f"{area} sqm")
+        if area_sqft is not None:
+            meta_parts.append(f"{area_sqft:,} sqft")
 
         storey_text = _safe_text(storey, "")
         if storey_text and storey_text != "—":
@@ -288,11 +268,16 @@ def _render_saved_section(section_df: pd.DataFrame, section_title: str, selected
                 key=f"sel_{section_title}_{lid}_{session_id}_{idx}",
                 use_container_width=True,
             ):
-                cur = st.session_state.compare_selected_ids
+                cur = st.session_state.get("compare_selected_ids", [])
+
                 if is_sel:
                     st.session_state.compare_selected_ids = [x for x in cur if x != lid]
                 else:
-                    st.session_state.compare_selected_ids = cur + [lid]
+                    if len(cur) >= MAX_COMPARE:
+                        st.warning(f"You can compare up to {MAX_COMPARE} flats at a time.")
+                    else:
+                        st.session_state.compare_selected_ids = cur + [lid]
+
                 st.rerun()
 
         with btn_c:
@@ -436,19 +421,17 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
     selected_ids = st.session_state.get("compare_selected_ids", [])
     all_ids = list(liked_df["listing_id"].astype(str).values)
 
-    c1, c2, c3 = st.columns([2, 1, 1])
+    c1, c2 = st.columns([3, 1])
+
     with c1:
         st.markdown(
             f"<p style='font-size:0.82rem;color:#4b5563;padding-top:0.5rem;'>"
             f"<strong>{len(liked_df)}</strong> saved · "
-            f"<strong>{len(selected_ids)}</strong> selected for comparison</p>",
+            f"<strong>{len(selected_ids)}</strong>/{MAX_COMPARE} selected for comparison</p>",
             unsafe_allow_html=True,
-        )
+    )
+
     with c2:
-        if st.button("Select all", key="saved_select_all", use_container_width=True):
-            st.session_state.compare_selected_ids = all_ids
-            st.rerun()
-    with c3:
         btn_label = "Go to Compare →" if len(selected_ids) == 0 else f"Go to Compare ({len(selected_ids)}) →"
         if st.button(btn_label, key="saved_go_compare", type="primary", use_container_width=True):
             st.session_state.active_page = "Compare"
@@ -495,7 +478,6 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
             if "is_hypothetical" not in saved_points.columns:
                 saved_points["is_hypothetical"] = False
 
-            # For hypothetical flats without exact coordinates, fall back to town centre
             hyp_mask = saved_points["is_hypothetical"].fillna(False)
             for idx, r in saved_points[hyp_mask].iterrows():
                 town_key = str(r.get("town", "")).upper().strip()
@@ -593,12 +575,10 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                         )
 
                 return "".join(lines)
-            
+
             if not plotted_points.empty:
                 plotted_points["tooltip_html"] = plotted_points.apply(saved_tooltip, axis=1)
-                # -----------------------------
-                # row selection can control map focus
-                # -----------------------------
+
                 summary = plotted_points[["address", "town"]].copy()
 
                 def _clean_address_for_table(val):
@@ -641,12 +621,6 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                 except Exception:
                     selected_rows = []
 
-                selected_rows = []
-                try:
-                    selected_rows = selection_event.selection.rows
-                except Exception:
-                    selected_rows = []
-
                 if selected_rows:
                     selected_idx = selected_rows[0]
                     if 0 <= selected_idx < len(plotted_points):
@@ -680,7 +654,6 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
 
                 layers = []
 
-                # Optional amenity markers for context
                 if not filtered_amenities.empty:
                     for amenity_type in visible:
                         amenity_type = _normalize_amenity_key(amenity_type)
@@ -714,7 +687,6 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                                 )
                             )
 
-                # Real listings: exact points
                 if not real_points.empty:
                     layers.append(
                         pdk.Layer(
@@ -731,7 +703,6 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                         )
                     )
 
-                # Hypothetical listings: approximate town-level bubble
                 if not hyp_points.empty:
                     layers.append(
                         pdk.Layer(
@@ -758,7 +729,6 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                         )
                     )
 
-                # Glow / highlight for selected listing
                 if focus_row is not None:
                     glow_df = pd.DataFrame([focus_row])
 
@@ -772,8 +742,6 @@ html,body{width:100%;height:100%;font-family:'DM Sans',-apple-system,sans-serif;
                             pickable=False,
                         )
                     )
-
-            
 
                 deck = pdk.Deck(
                     map_provider="carto",
