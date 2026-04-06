@@ -783,8 +783,10 @@ def _build_single_card_html(card_json: str) -> str:
 
                         <div class="match">
                             <div class="match-title">Why it matches</div>
-                            <div class="match-text" style="font-weight:700;color:#7c2d12;">{card["why_primary"]}</div>
-                            {f'<div class="match-text" style="margin-top:4px;color:#9a3412;">{card["why_secondary"]}</div>' if card.get("why_secondary") else ""}
+                            <ul style="margin:6px 0 0 18px;padding:0;color:#7c2d12;font-size:0.82rem;line-height:1.4;font-weight:700;">
+                                <li>{card["why_primary"]}</li>
+                                {f'<li>{card["why_secondary"]}</li>' if card.get("why_secondary") else ""}
+                            </ul>
                         </div>
                     </div>
 
