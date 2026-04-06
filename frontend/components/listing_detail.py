@@ -170,11 +170,11 @@ def _sqm_to_sqft(area_sqm) -> int:
 
 
 def _score_color(score: float) -> str:
-    if score >= 75:
-        return "#059669"
-    if score >= 50:
-        return "#d97706"
-    return "#dc2626"
+    if score >= 65:
+        return "#059669"   # green
+    if score >= 40:
+        return "#d97706"   # orange
+    return "#64748b"       # grey
 
 
 def _proximity_bg(dist) -> tuple[str, str]:
@@ -186,16 +186,17 @@ def _proximity_bg(dist) -> tuple[str, str]:
         return "#dcfce7", "#16a34a"   # softer light green
     if label == "Moderate":
         return "#fff7ed", "#d97706"
-    return "#fef2f2", "#dc2626"
+    return "#fef2f2", "#64748b"
 
 
 def _score_badge_html(score: float) -> str:
     color = _score_color(score)
     bg = {
-        "#059669": "#ecfdf5",
-        "#d97706": "#fff7ed",
-        "#dc2626": "#fef2f2",
+        "#059669": "#ecfdf5",  # green bg
+        "#d97706": "#fff7ed",  # orange bg
+        "#dc2626": "#fef2f2",  # red bg
     }.get(color, "#f8fafc")
+
     return (
         f"<span style='display:inline-block;padding:5px 10px;border-radius:999px;"
         f"background:{bg};color:{color};font-weight:800;font-size:0.78rem;"

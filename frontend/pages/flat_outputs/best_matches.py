@@ -49,7 +49,7 @@ def _val_color(label: str) -> str:
         return "#2563eb"
     if "Slight" in label:
         return "#d97706"
-    return "#dc2626"
+    return "#64748b"
 
 
 def _capitalize_first(text: str) -> str:
@@ -422,7 +422,7 @@ def render_listing_tab(listings_df: pd.DataFrame):
     components.html(html, height=510, scrolling=False)
 
     score = current_card["final_score"]
-    color = "#059E87" if score >= 75 else "#d97706" if score >= 50 else "#FF4458"
+    color = "#059E87" if score >= 70 else "#d97706" if score >= 50 else "#64748b"
 
     st.markdown(
         f"""
@@ -443,12 +443,25 @@ def render_listing_tab(listings_df: pd.DataFrame):
     badges = ""
     for amen, icon in AMENITY_ICONS.items():
         val = current_card.get(amen, 0)
-        border = "#059E87" if val >= 60 else "#cbd5e1"
+
+        if val >= 65:
+            border = "#059669"
+            bg = "#ecfdf5"
+            text = "#059669"
+        elif val >= 40:
+            border = "#d97706"
+            bg = "#fff7ed"
+            text = "#d97706"
+        else:
+            border = "#cbd5e1"
+            bg = "#f8fafc"
+            text = "#64748b"
+
         label = AMENITY_LABELS.get(amen, amen)
         badges += (
             f'<span style="display:inline-flex;align-items:center;gap:6px;'
             f'padding:6px 10px;border-radius:999px;border:1px solid {border};'
-            f'font-size:0.76rem;font-weight:600;color:#334155;background:#fff;">'
+            f'font-size:0.76rem;font-weight:700;color:{text};background:{bg};">'
             f'{icon} {label}</span>'
         )
 
